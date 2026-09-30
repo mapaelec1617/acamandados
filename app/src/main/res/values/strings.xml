@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">AcaMandados</string>
+    <string name="app_tagline">Paquetería y Mandados Locales</string>
+    <string name="app_slogan">De persona a persona</string>
+    <string name="default_web_client_id">1039485729102-mockwebclientid.apps.googleusercontent.com</string>
+    <string name="login_title">Bienvenido a AcaMandados</string>
+    <string name="login_subtitle">Tu plataforma local de envíos y mandados en Acapulco</string>
+    <string name="role_client_title">Quiero Enviar / Pedir</string>
+    <string name="role_client_desc">Envía paquetes, encarga compras, comida o farmacia con entrega rápida</string>
+    <string name="role_driver_title">Quiero Repartir</string>
+    <string name="role_driver_desc">Gana el 100% de cada viaje sin comisiones abusivas y cobra el mismo día</string>
+    <string name="sign_in_with_google">Continuar con Google</string>
+    <string name="quick_access">Acceso Rápido de Prueba</string>
+</resources>

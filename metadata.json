@@ -1,0 +1,6 @@
+{
+  "name": "AcaMandados",
+  "description": "Paquetería y mandados locales en Acapulco de persona a persona. Envíos, compras y entregas rápidas con 100% de ganancia para repartidores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
