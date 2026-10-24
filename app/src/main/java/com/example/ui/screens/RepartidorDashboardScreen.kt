@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +59,7 @@ enum class DashboardSort(val label: String) {
     RECIENTE("Más Reciente")
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RepartidorDashboardScreen(
     viewModel: MandadosViewModel,
@@ -69,6 +71,7 @@ fun RepartidorDashboardScreen(
     val driverLoc by viewModel.driverLocationState.collectAsStateWithLifecycle()
     val activeDriverOrder by viewModel.currentDriverActiveOrder.collectAsStateWithLifecycle()
     val completedOrders by viewModel.driverCompletedOrders.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
     val profile = driverProfile
     val isSubscribed = profile?.suscripcionActiva == true
@@ -132,14 +135,21 @@ fun RepartidorDashboardScreen(
         }
     }
 
-    LazyColumn(
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { viewModel.refreshData() },
         modifier = modifier
             .fillMaxSize()
-            .background(AcaBackground)
-            .testTag("screen_repartidor_dashboard"),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 95.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .testTag("pull_to_refresh_repartidor")
     ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(AcaBackground)
+                .testTag("screen_repartidor_dashboard"),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 95.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
         // 1. Tarjeta de Estado del Repartidor (En línea / Conectado)
         item {
             Card(
@@ -689,6 +699,7 @@ fun RepartidorDashboardScreen(
             }
         }
     }
+}
 
     if (showLocationBasePicker) {
         DriverBaseSelectionDialog(

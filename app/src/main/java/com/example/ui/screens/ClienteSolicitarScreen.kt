@@ -35,6 +35,7 @@ import com.example.data.model.TarifaDesglose
 import com.example.data.model.TipoMandado
 import com.example.ui.MandadosViewModel
 import com.example.ui.components.AcaBannerBadges
+import com.example.ui.components.NewOrderFormComponent
 import com.example.ui.components.PaymentSelectionComponent
 import com.example.ui.components.PaymentToggleButtons
 import com.example.ui.theme.*
@@ -197,428 +198,67 @@ fun ClienteSolicitarScreen(
             }
         }
 
-        // 1. Punto de Recogida y Quién Envía
+        // Formulario Material 3 de Nuevo Mandado (Origen, Destino y Descripción del Encargo o Paquete)
         item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.Place, contentDescription = null, tint = AcaTurquesaDark, modifier = Modifier.size(18.dp))
-                            Text(
-                                text = "1. Origen / ¿Quién manda?",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AcaAzulDark
-                            )
-                        }
-
-                        TextButton(
-                            onClick = { viewModel.copiarDatosClienteARemitente() },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text("Envío yo mismo", fontSize = 11.sp, color = AcaTurquesaDark, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    // Zona de Recogida
-                    OutlinedCard(
-                        onClick = { showZonaOrigenPicker = true },
-                        colors = CardDefaults.outlinedCardColors(containerColor = AcaSurfaceVariant),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Place,
-                                    contentDescription = null,
-                                    tint = AcaTurquesaDark
-                                )
-                                Column {
-                                    Text("Zona de Recogida", fontSize = 10.5.sp, color = AcaGrisSubtle)
-                                    Text(zonaRecogida, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = AcaGrisEquilibrio)
-                                }
-                            }
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Cambiar zona")
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = puntoRecogida,
-                        onValueChange = { viewModel.puntoRecogidaInput.value = it },
-                        label = { Text("Dirección de Origen (Recogida) *") },
-                        placeholder = { Text("Ej. Av. Costera #180 / Farmacia del Ahorro Magallanes") },
-                        isError = attemptedSubmit && puntoRecogida.trim().isBlank(),
-                        supportingText = {
-                            if (attemptedSubmit && puntoRecogida.trim().isBlank()) {
-                                Text(
-                                    text = "⚠️ La dirección de origen es obligatoria",
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("input_direccion_origen"),
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp)
-                    )
-
-                    // Accesos directos de dirección de origen
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        SuggestionChip(
-                            onClick = { viewModel.puntoRecogidaInput.value = "Av. Costera Miguel Alemán #180, Acapulco" },
-                            label = { Text("🏖️ Costera #180", fontSize = 10.sp) }
-                        )
-                        SuggestionChip(
-                            onClick = { viewModel.puntoRecogidaInput.value = "Tienda OXXO Condesa, Costera" },
-                            label = { Text("🛒 OXXO Condesa", fontSize = 10.sp) }
-                        )
-                        SuggestionChip(
-                            onClick = { viewModel.puntoRecogidaInput.value = "Farmacia del Ahorro, Magallanes" },
-                            label = { Text("💊 Farmacia Magallanes", fontSize = 10.sp) }
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = remitenteNombre,
-                            onValueChange = { viewModel.remitenteNombreInput.value = it },
-                            label = { Text("Nombre quien manda") },
-                            placeholder = { Text("Ej. Carlos / Yo") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp)
-                        )
-
-                        OutlinedTextField(
-                            value = remitenteTelefono,
-                            onValueChange = { viewModel.remitenteTelefonoInput.value = it },
-                            label = { Text("Celular / WhatsApp") },
-                            placeholder = { Text("7441234567") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp)
-                        )
-                    }
-                }
+            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                NewOrderFormComponent(
+                    viewModel = viewModel,
+                    attemptedSubmit = attemptedSubmit,
+                    onZonaOrigenClick = { showZonaOrigenPicker = true },
+                    onZonaDestinoClick = { showZonaDestinoPicker = true }
+                )
             }
         }
 
-        // 2. Punto de Entrega y Quién Recibe
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
-            ) {
-                Column(
+        // Presupuesto de compra estimado e instrucciones adicionales (para compras en farmacia, súper o comida)
+        if (selectedTipo == TipoMandado.FARMACIA || selectedTipo == TipoMandado.COMPRAS || selectedTipo == TipoMandado.COMIDA || notas.isNotBlank()) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 16.dp)
+                        .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = AcaAzulConfianza, modifier = Modifier.size(18.dp))
-                            Text(
-                                text = "2. Destino / ¿Quién recibe?",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AcaAzulDark
+                        Text(
+                            text = "Presupuesto de Compra y Notas",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AcaAzulDark
+                        )
+
+                        if (selectedTipo == TipoMandado.FARMACIA || selectedTipo == TipoMandado.COMPRAS || selectedTipo == TipoMandado.COMIDA) {
+                            OutlinedTextField(
+                                value = costoProductos,
+                                onValueChange = { viewModel.costoProductosInput.value = it },
+                                label = { Text("Presupuesto estimado de la compra (MXN)") },
+                                placeholder = { Text("Ej. 250.00 (opcional)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                leadingIcon = { Text("$", fontWeight = FontWeight.Bold) },
+                                shape = RoundedCornerShape(10.dp)
                             )
                         }
 
-                        TextButton(
-                            onClick = { viewModel.copiarDatosClienteADestinatario() },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text("Recibo yo mismo", fontSize = 11.sp, color = AcaAzulConfianza, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    // Zona de Entrega
-                    OutlinedCard(
-                        onClick = { showZonaDestinoPicker = true },
-                        colors = CardDefaults.outlinedCardColors(containerColor = AcaSurfaceVariant),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = AcaAzulConfianza
-                                )
-                                Column {
-                                    Text("Zona de Entrega", fontSize = 10.5.sp, color = AcaGrisSubtle)
-                                    Text(zonaEntrega, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = AcaGrisEquilibrio)
-                                }
-                            }
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Cambiar zona")
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = puntoEntrega,
-                        onValueChange = { viewModel.puntoEntregaInput.value = it },
-                        label = { Text("Dirección de Destino (Entrega) *") },
-                        placeholder = { Text("Ej. Condominio Torre de Mar #402, Costa Azul") },
-                        isError = attemptedSubmit && puntoEntrega.trim().isBlank(),
-                        supportingText = {
-                            if (attemptedSubmit && puntoEntrega.trim().isBlank()) {
-                                Text(
-                                    text = "⚠️ La dirección de destino es obligatoria",
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("input_direccion_destino"),
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp)
-                    )
-
-                    // Accesos directos de dirección de destino
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        SuggestionChip(
-                            onClick = {
-                                val frecuente = userProfile.direccionFrecuente.ifBlank { "Av. Costera Miguel Alemán #240, Condesa" }
-                                viewModel.puntoEntregaInput.value = frecuente
-                            },
-                            label = { Text("🏠 Mi Domicilio", fontSize = 10.sp) }
-                        )
-                        SuggestionChip(
-                            onClick = { viewModel.puntoEntregaInput.value = "Condominio Costa Azul Torre B #402" },
-                            label = { Text("🏢 Costa Azul", fontSize = 10.sp) }
-                        )
-                        SuggestionChip(
-                            onClick = { viewModel.puntoEntregaInput.value = "Blvd. de las Naciones Km 12, Diamante" },
-                            label = { Text("🌴 Zona Diamante", fontSize = 10.sp) }
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
                         OutlinedTextField(
-                            value = destinatarioNombre,
-                            onValueChange = { viewModel.destinatarioNombreInput.value = it },
-                            label = { Text("Nombre quien recibe") },
-                            placeholder = { Text("Ej. Dra. Laura / Mamá") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp)
-                        )
-
-                        OutlinedTextField(
-                            value = destinatarioTelefono,
-                            onValueChange = { viewModel.destinatarioTelefonoInput.value = it },
-                            label = { Text("Celular para avisarle") },
-                            placeholder = { Text("7449876543") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp)
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = referenciasDomicilio,
-                        onValueChange = { viewModel.referenciasDomicilioInput.value = it },
-                        label = { Text("Referencias del domicilio (Fachada, portón, timbre)") },
-                        placeholder = { Text("Ej. Casa blanca con portón negro, timbre derecho, o avisar en caseta de seguridad") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(85.dp),
-                        maxLines = 3,
-                        shape = RoundedCornerShape(10.dp)
-                    )
-
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = AcaTurquesaContainer.copy(alpha = 0.5f),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.TouchApp, contentDescription = null, tint = AcaTurquesaDark, modifier = Modifier.size(16.dp))
-                            Text(
-                                text = "El repartidor podrá avisar por WhatsApp con 1 toque: 'Ya estoy afuera de tu casa' o pedir más referencias si lo necesita.",
-                                fontSize = 10.5.sp,
-                                color = AcaTurquesaDark,
-                                lineHeight = 14.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Detalle del Mandado
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Detalles del Encargo",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AcaAzulDark
-                    )
-
-                    OutlinedTextField(
-                        value = titulo,
-                        onValueChange = { viewModel.tituloInput.value = it },
-                        label = { Text("Título corto del mandado") },
-                        placeholder = { Text("Ej. Compra de medicina / Entrega de llaves") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp)
-                    )
-
-                    OutlinedTextField(
-                        value = descripcion,
-                        onValueChange = { viewModel.descripcionInput.value = it },
-                        label = { Text("Descripción del Servicio o Mandado *") },
-                        placeholder = { Text("Describe qué necesita comprar, recoger o transportar el repartidor") },
-                        isError = attemptedSubmit && descripcion.trim().isBlank(),
-                        supportingText = {
-                            if (attemptedSubmit && descripcion.trim().isBlank()) {
-                                Text(
-                                    text = "⚠️ La descripción del servicio es obligatoria",
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(105.dp)
-                            .testTag("input_descripcion_servicio"),
-                        maxLines = 4,
-                        shape = RoundedCornerShape(10.dp)
-                    )
-
-                    // Sugerencias rápidas de descripción
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        SuggestionChip(
-                            onClick = { viewModel.descripcionInput.value = "Entrega de sobre sellado con llaves de departamento" },
-                            label = { Text("📦 Llaves/Sobre", fontSize = 10.sp) }
-                        )
-                        SuggestionChip(
-                            onClick = { viewModel.descripcionInput.value = "Comprar medicamento para dolor y suero oral en farmacia" },
-                            label = { Text("💊 Medicamentos", fontSize = 10.sp) }
-                        )
-                        SuggestionChip(
-                            onClick = { viewModel.descripcionInput.value = "Comprar 2 garrafones de agua y botana en tienda" },
-                            label = { Text("🛒 Súper", fontSize = 10.sp) }
-                        )
-                    }
-
-                    if (selectedTipo == TipoMandado.FARMACIA || selectedTipo == TipoMandado.COMPRAS || selectedTipo == TipoMandado.COMIDA) {
-                        OutlinedTextField(
-                            value = costoProductos,
-                            onValueChange = { viewModel.costoProductosInput.value = it },
-                            label = { Text("Presupuesto estimado de la compra (MXN)") },
-                            placeholder = { Text("Ej. 250.00 (opcional)") },
+                            value = notas,
+                            onValueChange = { viewModel.notasInput.value = it },
+                            label = { Text("Instrucciones o notas adicionales") },
+                            placeholder = { Text("Ej. Avisar en caseta de seguridad / Timbre derecho") },
                             modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
-                            leadingIcon = { Text("$", fontWeight = FontWeight.Bold) },
                             shape = RoundedCornerShape(10.dp)
                         )
                     }
-
-                    OutlinedTextField(
-                        value = notas,
-                        onValueChange = { viewModel.notasInput.value = it },
-                        label = { Text("Instrucciones o notas adicionales") },
-                        placeholder = { Text("Ej. Avisar en caseta de seguridad / Timbre derecho") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp)
-                    )
                 }
             }
         }

@@ -7,11 +7,17 @@ import com.example.data.db.RepartidorDao
 import com.example.data.model.AcapulcoLocations
 import com.example.data.model.CalificacionReview
 import com.example.data.model.DepositoTarjetaLog
+import com.example.data.model.Mandado
 import com.example.data.model.MandadoOrder
 import com.example.data.model.NotificationItem
 import com.example.data.model.RepartidorProfile
+import com.example.data.model.TransaccionBilletera
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class MandadosRepository(
     private val mandadoDao: MandadoDao,
@@ -20,11 +26,15 @@ class MandadosRepository(
     private val notificationDao: NotificationDao,
     val firestoreRepository: FirestoreRepository? = null
 ) {
+    private val secureRandom = SecureRandom()
+    private val pinFailedAttempts = ConcurrentHashMap<Long, Int>()
+
     val allOrders: Flow<List<MandadoOrder>> = mandadoDao.getAllOrders()
     val availableOrders: Flow<List<MandadoOrder>> = mandadoDao.getAvailableOrders()
     val activeOrders: Flow<List<MandadoOrder>> = mandadoDao.getActiveOrders()
     val repartidorProfile: Flow<RepartidorProfile?> = repartidorDao.getProfileFlow()
     val depositosLog: Flow<List<DepositoTarjetaLog>> = repartidorDao.getDepositosFlow()
+    val transaccionesBilletera: Flow<List<TransaccionBilletera>> = repartidorDao.getTransaccionesFlow()
     val allReviews: Flow<List<CalificacionReview>> = calificacionDao.getAllCalificaciones()
     val allNotifications: Flow<List<NotificationItem>> = notificationDao.getAllNotifications()
     val unreadNotificationsCount: Flow<Int> = notificationDao.getUnreadCountFlow()
@@ -71,9 +81,9 @@ class MandadosRepository(
         tarjetaAprobada: Boolean = false,
         notas: String = ""
     ): Long {
-        val randomFolioNum = (1050..9999).random()
-        val randomPin = (1000..9999).random().toString()
-        val uniqueTrackingToken = "trk_" + java.util.UUID.randomUUID().toString().replace("-", "").take(10)
+        val randomFolioNum = 1050 + secureRandom.nextInt(8950)
+        val randomPin = String.format("%04d", secureRandom.nextInt(10000))
+        val uniqueTrackingToken = "trk_" + UUID.randomUUID().toString().replace("-", "").take(12)
         val (latRec, lngRec) = AcapulcoLocations.getCoordenadasParaZona(zonaRecogida)
         val (latEnt, lngEnt) = AcapulcoLocations.getCoordenadasParaZona(zonaEntrega)
 
@@ -161,9 +171,25 @@ class MandadosRepository(
 
     suspend fun validarPinYFinalizarEntrega(orderId: Long, pinIngresado: String, fotoEntregaUri: String?): Boolean {
         val order = mandadoDao.getOrderById(orderId) ?: return false
-        if (pinIngresado.trim() != order.pinSeguridad.trim()) {
+
+        // Protección contra ataques de fuerza bruta en el PIN de 4 dígitos
+        val currentAttempts = pinFailedAttempts.getOrDefault(orderId, 0)
+        if (currentAttempts >= 5) {
+            return false // Bloqueado tras 5 intentos fallidos
+        }
+
+        // Comparación en tiempo constante para mitigar ataques de temporización
+        val expectedBytes = order.pinSeguridad.trim().toByteArray(Charsets.UTF_8)
+        val inputBytes = pinIngresado.trim().toByteArray(Charsets.UTF_8)
+        val isPinCorrect = MessageDigest.isEqual(expectedBytes, inputBytes)
+
+        if (!isPinCorrect) {
+            pinFailedAttempts[orderId] = currentAttempts + 1
             return false
         }
+
+        // Limpiar contador tras validación exitosa
+        pinFailedAttempts.remove(orderId)
 
         val speiKey = if (order.metodoPago == "TARJETA") "STP${System.currentTimeMillis()}" else null
         val updated = order.copy(
@@ -491,6 +517,19 @@ class MandadosRepository(
             suscripcionFechaFin = baseTime + extension
         )
         repartidorDao.insertOrUpdateProfile(updated)
+
+        // Registrar en historial de transacciones de la billetera
+        repartidorDao.insertTransaccion(
+            TransaccionBilletera(
+                tipo = "SUSCRIPCION",
+                concepto = "Pago Suscripción Semanal AcaMandados",
+                detalle = "7 días de acceso para viajes con 100% de ganancia",
+                monto = 150.0,
+                fecha = System.currentTimeMillis(),
+                metodoPago = "SALDO",
+                estado = "LIQUIDADO"
+            )
+        )
     }
 
     suspend fun actualizarPerfilRepartidor(
@@ -519,4 +558,183 @@ class MandadosRepository(
         val current = repartidorDao.getProfileSync() ?: return
         repartidorDao.insertOrUpdateProfile(current.copy(disponibleParaMandados = disponible))
     }
+
+    /**
+     * Procesa el pago de un mandado completado en la billetera del repartidor.
+     * Si es TARJETA:
+     *   - Genera la dispersión bancaria SPEI inmediata con clave de rastreo STP.
+     *   - Registra el movimiento en DepositoTarjetaLog.
+     *   - Actualiza el pedido con pagoDepositadoAlRepartidor = true.
+     *   - Notifica al repartidor de la acreditación bancaria.
+     * Si es EFECTIVO:
+     *   - Confirma y asienta el cobro en efectivo recibido en mano.
+     *   - Actualiza el pedido con pagoDepositadoAlRepartidor = true.
+     */
+    suspend fun procesarPagoMandado(orderId: Long): Result<DepositoTarjetaLog?> {
+        val order = mandadoDao.getOrderById(orderId)
+            ?: return Result.failure(IllegalArgumentException("Mandado no encontrado"))
+        if (order.estado != "ENTREGADO") {
+            return Result.failure(IllegalStateException("El mandado ${order.folio} aún no ha sido entregado"))
+        }
+        if (order.pagoDepositadoAlRepartidor) {
+            return Result.failure(IllegalStateException("El pago del mandado ${order.folio} ya fue liquidado previamente"))
+        }
+
+        val driver = repartidorDao.getProfileSync()
+        val clabeTerm = driver?.clabeInterbancaria?.takeLast(4) ?: "1234"
+        val banco = driver?.banco ?: "BBVA México"
+        val speiKey = order.claveRastreoSpei ?: "STP${System.currentTimeMillis()}"
+        val totalMonto = order.tarifaEnvio + order.costoProductosEstimado
+
+        val depositoLog: DepositoTarjetaLog? = if (order.metodoPago == "TARJETA") {
+            val dep = DepositoTarjetaLog(
+                orderFolio = order.folio,
+                monto = totalMonto,
+                fecha = System.currentTimeMillis(),
+                bancoDestino = banco,
+                clabeTerminacion = clabeTerm,
+                claveRastreoSpei = speiKey,
+                estado = "DEPOSITADO_HOY"
+            )
+            repartidorDao.insertDeposito(dep)
+            dep
+        } else {
+            null
+        }
+
+        val updatedOrder = order.copy(
+            pagoDepositadoAlRepartidor = true,
+            claveRastreoSpei = if (order.metodoPago == "TARJETA") speiKey else null
+        )
+        mandadoDao.updateOrder(updatedOrder)
+
+        // Enviar notificación de confirmación al repartidor
+        val titulo = if (order.metodoPago == "TARJETA") "💳 ¡Depósito SPEI Procesado!" else "💵 ¡Cobro en Efectivo Liquidado!"
+        val mensaje = if (order.metodoPago == "TARJETA") {
+            "Se transfirieron $${String.format("%.2f", totalMonto)} MXN a tu cuenta $banco (••$clabeTerm). Clave SPEI: $speiKey"
+        } else {
+            "Se registró el cobro en mano de $${String.format("%.2f", totalMonto)} MXN por el mandado ${order.folio} (100% ganancia)."
+        }
+
+        notificationDao.insertNotification(
+            NotificationItem(
+                titulo = titulo,
+                mensaje = mensaje,
+                tipo = if (order.metodoPago == "TARJETA") "SPEI" else "ENTREGADO",
+                orderFolio = order.folio,
+                orderId = orderId,
+                paraRol = "REPARTIDOR"
+            )
+        )
+
+        // Registrar en el historial de transacciones de la billetera
+        val isTarjeta = order.metodoPago == "TARJETA"
+        repartidorDao.insertTransaccion(
+            TransaccionBilletera(
+                tipo = "INGRESO",
+                concepto = if (isTarjeta) "Ingreso Mandado ${order.folio} (SPEI)" else "Ingreso Mandado ${order.folio} (Efectivo)",
+                detalle = "${order.titulo} • ${order.puntoRecogida} ➔ ${order.puntoEntrega}",
+                monto = totalMonto,
+                fecha = System.currentTimeMillis(),
+                orderFolio = order.folio,
+                orderId = order.id,
+                metodoPago = if (isTarjeta) "TARJETA" else "EFECTIVO",
+                claveRastreoSpei = if (isTarjeta) speiKey else null,
+                bancoDestino = if (isTarjeta) banco else null,
+                clabeTerminacion = if (isTarjeta) clabeTerm else null,
+                estado = "LIQUIDADO"
+            )
+        )
+
+        // Sincronizar en Firestore si está disponible
+        try {
+            firestoreRepository?.saveOrderRequest(updatedOrder)
+        } catch (_: Exception) {}
+
+        return Result.success(depositoLog)
+    }
+
+    /**
+     * Solicita y procesa un retiro de fondos hacia la cuenta bancaria del repartidor vía SPEI.
+     */
+    suspend fun solicitarRetiro(monto: Double, motivo: String = "Retiro SPEI a cuenta bancaria"): Result<TransaccionBilletera> {
+        if (monto <= 0) {
+            return Result.failure(IllegalArgumentException("El monto a retirar debe ser mayor a cero"))
+        }
+
+        val driver = repartidorDao.getProfileSync() ?: RepartidorProfile()
+        val clabeTerm = driver.clabeInterbancaria.takeLast(4).ifBlank { "1234" }
+        val banco = driver.banco.ifBlank { "BBVA México" }
+        val speiKey = "RET${System.currentTimeMillis()}"
+
+        val transaccion = TransaccionBilletera(
+            tipo = "RETIRO",
+            concepto = "Retiro SPEI a $banco",
+            detalle = "Dispersión de saldo acumulado a cuenta CLABE •••• $clabeTerm",
+            monto = monto,
+            fecha = System.currentTimeMillis(),
+            metodoPago = "SPEI",
+            claveRastreoSpei = speiKey,
+            bancoDestino = banco,
+            clabeTerminacion = clabeTerm,
+            estado = "LIQUIDADO"
+        )
+
+        repartidorDao.insertTransaccion(transaccion)
+
+        notificationDao.insertNotification(
+            NotificationItem(
+                titulo = "💸 Retiro SPEI Exitoso",
+                mensaje = "Se han transferido $${String.format("%.2f", monto)} MXN a tu cuenta $banco (••$clabeTerm). Clave SPEI: $speiKey",
+                tipo = "SPEI",
+                paraRol = "REPARTIDOR"
+            )
+        )
+
+        return Result.success(transaccion)
+    }
+
+    /**
+     * Procesa y dispersa todos los pagos pendientes de mandados completados con tarjeta o efectivo.
+     */
+    suspend fun procesarTodosLosPagosPendientes(driverId: Long = 1): Result<Int> {
+        val completedOrders = mandadoDao.getDriverCompletedOrders(driverId).first()
+        val pendientes = completedOrders.filter { !it.pagoDepositadoAlRepartidor }
+        if (pendientes.isEmpty()) {
+            return Result.success(0)
+        }
+
+        var procesados = 0
+        for (order in pendientes) {
+            val res = procesarPagoMandado(order.id)
+            if (res.isSuccess) {
+                procesados++
+            }
+        }
+        return Result.success(procesados)
+    }
+
+    // ==========================================
+    // Repository CRUD Methods for Mandado Entity
+    // ==========================================
+
+    val allMandados: Flow<List<Mandado>> = mandadoDao.getAllMandados()
+
+    fun getMandadosByStatus(status: String): Flow<List<Mandado>> =
+        mandadoDao.getMandadosByStatus(status)
+
+    suspend fun getMandadoById(id: Long): Mandado? =
+        mandadoDao.getMandadoById(id)
+
+    suspend fun insertMandado(mandado: Mandado): Long =
+        mandadoDao.insertMandado(mandado)
+
+    suspend fun updateMandado(mandado: Mandado) =
+        mandadoDao.updateMandado(mandado)
+
+    suspend fun deleteMandado(mandado: Mandado) =
+        mandadoDao.deleteMandado(mandado)
+
+    suspend fun deleteMandadoById(id: Long) =
+        mandadoDao.deleteMandadoById(id)
 }

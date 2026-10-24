@@ -58,6 +58,8 @@ object AcaNotificationHelper {
         title: String,
         message: String,
         isDriverNotification: Boolean = false,
+        orderId: Long? = null,
+        orderFolio: String? = null,
         notificationId: Int = (1000..9999).random()
     ) {
         initNotificationChannels(context)
@@ -78,6 +80,13 @@ object AcaNotificationHelper {
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("EXTRA_NAVIGATE_TO", if (isDriverNotification) "REPARTIDOR_DISPONIBLES" else "CLIENTE_MIS_MANDADOS")
+            if (orderId != null) {
+                putExtra("EXTRA_ORDER_ID", orderId)
+            }
+            if (orderFolio != null) {
+                putExtra("EXTRA_ORDER_FOLIO", orderFolio)
+            }
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
@@ -96,10 +105,41 @@ object AcaNotificationHelper {
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
 
+        if (isDriverNotification) {
+            builder.addAction(
+                R.mipmap.ic_launcher,
+                "🛵 Ver y Aceptar",
+                pendingIntent
+            )
+        }
+
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
         } catch (_: SecurityException) {
             // Manejo seguro si el permiso fue revocado
         }
+    }
+
+    /**
+     * Emite una vibración háptica de alerta para repartidores al recibir un nuevo mandado en primer plano.
+     */
+    fun triggerDriverAlertVibration(context: Context) {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                vibratorManager?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(
+                    android.os.VibrationEffect.createWaveform(longArrayOf(0, 250, 100, 250), -1)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(longArrayOf(0, 250, 100, 250), -1)
+            }
+        } catch (_: Exception) {}
     }
 }

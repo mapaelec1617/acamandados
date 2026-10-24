@@ -7,6 +7,8 @@ import com.example.data.model.MandadoOrder
 import com.example.data.model.RepartidorProfile
 import com.example.data.model.UserProfile
 import com.example.util.FirebaseAuthHelper
+import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -189,15 +191,21 @@ class FirestoreRepository(
 
     private val db: FirebaseFirestore? by lazy {
         firestoreInstance ?: run {
-            context?.let { FirebaseAuthHelper.ensureFirebaseApp(it) }
-            try {
-                FirebaseFirestore.getInstance()
-            } catch (e: Exception) {
-                logW(TAG, "No se pudo obtener la instancia de FirebaseFirestore: ${e.message}")
-                null
+            context?.let { ctx ->
+                FirebaseAuthHelper.ensureFirebaseApp(ctx)
+                try {
+                    val dbId = ctx.getString(com.example.R.string.firestore_database_id)
+                    FirebaseFirestore.getInstance(dbId)
+                } catch (e: Exception) {
+                    logW(TAG, "No se pudo obtener la instancia de FirebaseFirestore con custom DB ID: ${e.message}")
+                    null
+                }
             }
         }
     }
+
+    // Mitigación de fuerza bruta para validación de PIN en la nube
+    private val pinFailedAttempts = ConcurrentHashMap<String, Int>()
 
     // =========================================================================
     // 1. GESTIÓN DE PERFILES DE USUARIO (User Profiles)
@@ -593,9 +601,22 @@ class FirestoreRepository(
         fotoEntregaUri: String? = null,
         claveSpei: String? = null
     ): Result<Boolean> = withContext(NonCancellable) {
-        if (pinIngresado.trim() != expectedPin.trim()) {
+        val currentAttempts = pinFailedAttempts.getOrDefault(orderFolio, 0)
+        if (currentAttempts >= 5) {
+            logW(TAG, "PIN bloqueado temporalmente por exceso de intentos fallidos (fuerza bruta) para $orderFolio")
             return@withContext Result.success(false)
         }
+
+        val expectedBytes = expectedPin.trim().toByteArray(Charsets.UTF_8)
+        val inputBytes = pinIngresado.trim().toByteArray(Charsets.UTF_8)
+        val isPinCorrect = MessageDigest.isEqual(expectedBytes, inputBytes)
+
+        if (!isPinCorrect) {
+            pinFailedAttempts[orderFolio] = currentAttempts + 1
+            return@withContext Result.success(false)
+        }
+
+        pinFailedAttempts.remove(orderFolio)
 
         val firestore = db ?: return@withContext Result.failure(IllegalStateException("Firestore no está disponible"))
         try {

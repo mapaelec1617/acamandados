@@ -65,12 +65,15 @@ class UserProfileRepository(
 
     private val db: FirebaseFirestore? by lazy {
         firestoreInstance ?: run {
-            context?.let { FirebaseAuthHelper.ensureFirebaseApp(it) }
-            try {
-                FirebaseFirestore.getInstance()
-            } catch (e: Exception) {
-                logW(TAG, "No se pudo obtener la instancia de FirebaseFirestore: ${e.message}")
-                null
+            context?.let { ctx ->
+                FirebaseAuthHelper.ensureFirebaseApp(ctx)
+                try {
+                    val dbId = ctx.getString(com.example.R.string.firestore_database_id)
+                    FirebaseFirestore.getInstance(dbId)
+                } catch (e: Exception) {
+                    logW(TAG, "No se pudo obtener la instancia de FirebaseFirestore con custom DB ID: ${e.message}")
+                    null
+                }
             }
         }
     }
@@ -115,6 +118,23 @@ class UserProfileRepository(
             throw e
         } catch (e: Exception) {
             logE(TAG, "Error al consultar perfil del usuario $uid: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Elimina el perfil del usuario de Firestore de acuerdo a las políticas de privacidad y Google Play.
+     */
+    suspend fun deleteUserProfile(uid: String): Result<Unit> = withContext(NonCancellable) {
+        val firestore = db ?: return@withContext Result.failure(IllegalStateException("Firestore no está disponible"))
+        try {
+            firestore.collection(COLLECTION_USER_PROFILES).document(uid).delete().awaitTask()
+            logD(TAG, "Perfil de usuario $uid eliminado exitosamente de Firestore")
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logE(TAG, "Error al eliminar perfil del usuario $uid: ${e.message}", e)
             Result.failure(e)
         }
     }

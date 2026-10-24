@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -19,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -57,15 +59,26 @@ private enum class AuthTab {
 @Composable
 fun LoginScreen(
     viewModel: MandadosViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialRole: AppMode = AppMode.CLIENTE,
+    initialTabIsRegister: Boolean = false,
+    onBackToInicio: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedRole by remember { mutableStateOf(AppMode.CLIENTE) }
-    var currentAuthTab by remember { mutableStateOf(AuthTab.INICIAR_SESION) }
-    var showEmailForm by remember { mutableStateOf(false) }
+    if (onBackToInicio != null) {
+        BackHandler {
+            onBackToInicio()
+        }
+    }
+
+    var selectedRole by remember(initialRole) { mutableStateOf(initialRole) }
+    var currentAuthTab by remember(initialTabIsRegister) {
+        mutableStateOf(if (initialTabIsRegister) AuthTab.REGISTRARSE else AuthTab.INICIAR_SESION)
+    }
+    var showEmailForm by remember(initialTabIsRegister) { mutableStateOf(initialTabIsRegister) }
 
     // Campos de formulario
     var emailInput by remember { mutableStateOf("") }
@@ -74,6 +87,7 @@ fun LoginScreen(
     var nombreInput by remember { mutableStateOf("") }
     var telefonoInput by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var termsAndDataAccepted by remember { mutableStateOf(false) }
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -107,6 +121,32 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
+            // Botón de regreso a Pantalla de Inicio si fue proporcionado
+            if (onBackToInicio != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onBackToInicio,
+                        modifier = Modifier.testTag("btn_volver_a_inicio")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver al inicio",
+                            tint = Color.White
+                        )
+                    }
+                    Text(
+                        text = "Volver a Inicio de AcaMandados",
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
             // Header con Logo y Marca
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -354,6 +394,52 @@ fun LoginScreen(
                             )
                         }
 
+                        if (selectedRole == AppMode.REPARTIDOR) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = AcaAzulConfianza.copy(alpha = 0.25f),
+                                border = BorderStroke(1.dp, AcaTurquesa.copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { viewModel.openRegistroRepartidorScreen() }
+                                    .testTag("btn_link_registro_simplificado_repartidor")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.TwoWheeler,
+                                        contentDescription = null,
+                                        tint = AcaTurquesaLight,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "¿Eres nuevo repartidor?",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.5.sp
+                                        )
+                                        Text(
+                                            text = "Ir al Registro Simplificado (Nombre, Teléfono y Vehículo)",
+                                            color = AcaTurquesaLight,
+                                            fontSize = 10.5.sp
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        tint = AcaTurquesaLight,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(14.dp))
 
                         // Campos si está en modo registro
@@ -523,6 +609,51 @@ fun LoginScreen(
                                     )
                                 }
                             }
+                        }
+
+                        if (currentAuthTab == AuthTab.REGISTRARSE) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color.White.copy(alpha = 0.08f),
+                                border = BorderStroke(1.dp, if (termsAndDataAccepted) AcaTurquesa else Color.White.copy(alpha = 0.2f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = termsAndDataAccepted,
+                                        onCheckedChange = { termsAndDataAccepted = it },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = AcaTurquesa,
+                                            uncheckedColor = Color.White.copy(alpha = 0.7f),
+                                            checkmarkColor = Color(0xFF00382E)
+                                        ),
+                                        modifier = Modifier.testTag("checkbox_auth_terms")
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Autorizo el tratamiento de mis datos personales y acepto las Políticas de Seguridad y Privacidad.",
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            lineHeight = 14.sp
+                                        )
+                                        Text(
+                                            text = "Ver Políticas y Aviso de Privacidad",
+                                            color = AcaTurquesaLight,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .clickable { viewModel.openPrivacyPolicyScreen() }
+                                                .testTag("btn_auth_ver_politicas")
+                                        )
+                                    }
+                                }
+                            }
                         } else {
                             Spacer(modifier = Modifier.height(14.dp))
                         }
@@ -544,6 +675,10 @@ fun LoginScreen(
                                 }
 
                                 if (currentAuthTab == AuthTab.REGISTRARSE) {
+                                    if (!termsAndDataAccepted) {
+                                        errorMessage = "Debes autorizar el tratamiento de tus datos personales y aceptar las políticas de seguridad para registrarte."
+                                        return@Button
+                                    }
                                     val confirm = confirmPasswordInput.trim()
                                     if (password != confirm) {
                                         errorMessage = "Las contraseñas no coinciden."
@@ -755,11 +890,31 @@ fun LoginScreen(
                     )
                 }
 
+                // Políticas de Seguridad y Privacidad
+                TextButton(
+                    onClick = { viewModel.openPrivacyPolicyScreen() },
+                    modifier = Modifier.testTag("btn_footer_politicas_seguridad")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = AcaTurquesaLight,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Políticas de Seguridad y Privacidad de Datos",
+                        color = AcaTurquesaLight,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
                 // Footer de seguridad
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
+                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Lock,

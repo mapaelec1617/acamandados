@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-android-acamanda-b31e2fc7-6751-40a0-8955-37f6acc99d97",
+      "rules": "firestore.rules"
+    }
+  ]
+}

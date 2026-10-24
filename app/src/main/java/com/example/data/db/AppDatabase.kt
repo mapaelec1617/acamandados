@@ -7,9 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.model.CalificacionReview
 import com.example.data.model.DepositoTarjetaLog
+import com.example.data.model.Mandado
 import com.example.data.model.MandadoOrder
 import com.example.data.model.NotificationItem
 import com.example.data.model.RepartidorProfile
+import com.example.data.model.TransaccionBilletera
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -17,12 +19,14 @@ import kotlinx.coroutines.launch
 @Database(
     entities = [
         MandadoOrder::class,
+        Mandado::class,
         RepartidorProfile::class,
         DepositoTarjetaLog::class,
         CalificacionReview::class,
-        NotificationItem::class
+        NotificationItem::class,
+        TransaccionBilletera::class
     ],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -106,8 +110,63 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 )
 
-                // Pedidos de prueba locales en Acapulco
                 val now = System.currentTimeMillis()
+
+                // Transacciones iniciales en el historial de la billetera (ingresos de mandados y retiros)
+                repartidorDao.insertTransacciones(
+                    listOf(
+                        TransaccionBilletera(
+                            tipo = "INGRESO",
+                            concepto = "Ingreso Mandado ACA-1037",
+                            detalle = "Entrega Express • Cobrado en efectivo en mano",
+                            monto = 90.0,
+                            fecha = now - 1000 * 60 * 135,
+                            orderFolio = "ACA-1037",
+                            metodoPago = "EFECTIVO",
+                            estado = "LIQUIDADO"
+                        ),
+                        TransaccionBilletera(
+                            tipo = "INGRESO",
+                            concepto = "Ingreso Mandado ACA-1018",
+                            detalle = "Comida Beto Godoy • Dispersión bancaria SPEI",
+                            monto = 110.0,
+                            fecha = now - 3600000 * 4,
+                            orderFolio = "ACA-1018",
+                            metodoPago = "TARJETA",
+                            bancoDestino = "BBVA México",
+                            clabeTerminacion = "1234",
+                            claveRastreoSpei = "STP20260922004921",
+                            estado = "LIQUIDADO"
+                        ),
+                        TransaccionBilletera(
+                            tipo = "RETIRO",
+                            concepto = "Retiro SPEI a Cuenta Bancaria",
+                            detalle = "Dispersión de saldo acumulado a BBVA México •••• 1234",
+                            monto = 250.0,
+                            fecha = now - 3600000 * 8,
+                            metodoPago = "SPEI",
+                            bancoDestino = "BBVA México",
+                            clabeTerminacion = "1234",
+                            claveRastreoSpei = "RET20260922119022",
+                            estado = "LIQUIDADO"
+                        ),
+                        TransaccionBilletera(
+                            tipo = "INGRESO",
+                            concepto = "Ingreso Mandado ACA-1002",
+                            detalle = "Súper Chedraui Diamante • Tarifa flete y compra",
+                            monto = 240.0,
+                            fecha = now - 3600000 * 20,
+                            orderFolio = "ACA-1002",
+                            metodoPago = "TARJETA",
+                            bancoDestino = "BBVA México",
+                            clabeTerminacion = "1234",
+                            claveRastreoSpei = "STP20260921008819",
+                            estado = "LIQUIDADO"
+                        )
+                    )
+                )
+
+                // Pedidos de prueba locales en Acapulco
                 val sampleOrders = listOf(
                     MandadoOrder(
                         folio = "ACA-1045",
@@ -231,7 +290,41 @@ abstract class AppDatabase : RoomDatabase() {
                         repartidorPlacas = "GRO-489A",
                         fechaCreacion = now - 1000 * 60 * 180,
                         fechaEntrega = now - 1000 * 60 * 135,
-                        pagoDepositadoAlRepartidor = true
+                        pagoDepositadoAlRepartidor = true,
+                        claveRastreoSpei = "STP202609291040"
+                    ),
+                    MandadoOrder(
+                        folio = "ACA-1038",
+                        tipo = "FARMACIA",
+                        titulo = "Medicamentos & Termómetro Digital",
+                        descripcion = "Recoger receta surtida en Farmacia del Ahorro y entregar con cuidado en recepción.",
+                        puntoRecogida = "Farmacia del Ahorro, Av. Costera 240",
+                        zonaRecogida = "Costera Miguel Alemán",
+                        puntoEntrega = "Hotel Fiesta Americana, Costera 97",
+                        zonaEntrega = "Costera Miguel Alemán",
+                        costoProductosEstimado = 145.0,
+                        tarifaEnvio = 85.0,
+                        metodoPago = "TARJETA",
+                        estado = "ENTREGADO",
+                        clienteNombre = "Dra. Marcela Estrada",
+                        clienteTelefono = "7449871122",
+                        remitenteNombre = "Farmacia del Ahorro",
+                        remitenteTelefono = "7444840011",
+                        destinatarioNombre = "Dra. Marcela Estrada",
+                        destinatarioTelefono = "7449871122",
+                        referenciasDomicilio = "Entregar en concierge / lobby con número de habitación 714.",
+                        pinSeguridad = "3819",
+                        tarjetaUltimos4 = "4820",
+                        tarjetaTitular = "Marcela Estrada",
+                        tarjetaAprobada = true,
+                        repartidorId = 1,
+                        repartidorNombre = "Carlos Mendoza",
+                        repartidorTelefono = "7441234567",
+                        repartidorVehiculo = "Italika FT150 Blanca",
+                        repartidorPlacas = "GRO-489A",
+                        fechaCreacion = now - 1000 * 60 * 90,
+                        fechaEntrega = now - 1000 * 60 * 50,
+                        pagoDepositadoAlRepartidor = false
                     )
                 )
 

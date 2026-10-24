@@ -32,12 +32,7 @@ object FirebaseAuthHelper {
     fun ensureFirebaseApp(context: Context): FirebaseApp? {
         return try {
             if (FirebaseApp.getApps(context).isEmpty()) {
-                val options = FirebaseOptions.Builder()
-                    .setApplicationId("com.aistudio.acamandados.acp")
-                    .setApiKey("AIzaSyFakeKeyForLocalDevAcaMandados")
-                    .setProjectId("acamandados-app")
-                    .build()
-                FirebaseApp.initializeApp(context.applicationContext, options)
+                FirebaseApp.initializeApp(context.applicationContext)
             } else {
                 FirebaseApp.getInstance()
             }

@@ -238,22 +238,24 @@ fun PinValidationDialog(
                         .testTag("pin_input_field")
                 )
 
-                // Botón de ayuda para testing rápido en emulador (Simula que el cliente dictó su PIN)
-                TextButton(
-                    onClick = {
-                        pinText = order.pinSeguridad
-                        errorMessage = null
-                    },
-                    modifier = Modifier.padding(vertical = 0.dp)
-                ) {
-                    Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(15.dp), tint = AcaTurquesaDark)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Probar con PIN del destinatario: [${order.pinSeguridad}]",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AcaTurquesaDark
-                    )
+                // Botón de ayuda exclusivo para el dispositivo del receptor (El repartidor nunca debe ver el PIN del cliente)
+                if (recipientDeviceMode) {
+                    TextButton(
+                        onClick = {
+                            pinText = order.pinSeguridad
+                            errorMessage = null
+                        },
+                        modifier = Modifier.padding(vertical = 0.dp)
+                    ) {
+                        Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(15.dp), tint = AcaTurquesaDark)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Auto-completar mi PIN de receptor: [${order.pinSeguridad}]",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AcaTurquesaDark
+                        )
+                    }
                 }
 
                 // Foto de Evidencia de Entrega (Opcional / Recomendada)

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.ui.AppMode
+import com.example.ui.DarkThemeConfig
 import com.example.ui.MandadosViewModel
 import com.example.ui.theme.*
 
@@ -267,6 +268,21 @@ fun PerfilScreen(
                         testTag = "radio_rol_repartidor"
                     )
 
+                    // Opción 3: Administrador de Operaciones
+                    RoleOptionSelector(
+                        title = "Administrador de Operaciones",
+                        subtitle = "Supervisa en tiempo real los mandados activos en Acapulco, la ubicación de los repartidores y el estado general de las entregas del día.",
+                        badge = "Control & Telemetría",
+                        icon = Icons.Default.AdminPanelSettings,
+                        isSelected = selectedRoleChoice == AppMode.ADMIN,
+                        activeColor = Color(0xFFD97706),
+                        onClick = {
+                            selectedRoleChoice = AppMode.ADMIN
+                            roleSaveSuccessMessage = null
+                        },
+                        testTag = "radio_rol_admin"
+                    )
+
                     // Mensaje de éxito al guardar
                     AnimatedVisibility(
                         visible = roleSaveSuccessMessage != null,
@@ -307,16 +323,25 @@ fun PerfilScreen(
                             roleSaveSuccessMessage = null
                             viewModel.cambiarYGuardarRol(selectedRoleChoice) { success ->
                                 isSavingRole = false
+                                val roleLabel = when (selectedRoleChoice) {
+                                    AppMode.CLIENTE -> "Cliente"
+                                    AppMode.REPARTIDOR -> "Repartidor"
+                                    AppMode.ADMIN -> "Administrador de Operaciones"
+                                }
                                 if (success) {
-                                    roleSaveSuccessMessage = "✅ Preferencia guardada en Firestore: Ahora eres ${if (selectedRoleChoice == AppMode.CLIENTE) "Cliente" else "Repartidor"}."
+                                    roleSaveSuccessMessage = "✅ Preferencia guardada en Firestore: Ahora estás en modo $roleLabel."
                                 } else {
-                                    Toast.makeText(context, "Rol actualizado localmente", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Modo cambiado a $roleLabel", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         },
                         enabled = !isSavingRole,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selectedRoleChoice == AppMode.CLIENTE) AcaTurquesaDark else Color(0xFF0284C7)
+                            containerColor = when (selectedRoleChoice) {
+                                AppMode.CLIENTE -> AcaTurquesaDark
+                                AppMode.REPARTIDOR -> Color(0xFF0284C7)
+                                AppMode.ADMIN -> Color(0xFFD97706)
+                            }
                         ),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
@@ -839,6 +864,147 @@ fun PerfilScreen(
             }
         }
 
+        // Sección: Apariencia, Modo Oscuro y Colores Dinámicos (Material 3)
+        item {
+            val darkThemeConfig by viewModel.darkThemeConfig.collectAsStateWithLifecycle()
+            val dynamicColorConfig by viewModel.dynamicColorConfig.collectAsStateWithLifecycle()
+
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("card_apariencia_tema")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Palette,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Apariencia y Colores Dinámicos",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.5.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Personalización nativa Material Design 3",
+                                fontSize = 11.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // Switch Colores Dinámicos (Android 12+)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Colores Dinámicos (Material You)",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer
+                                ) {
+                                    Text(
+                                        text = "Android 12+",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Extrae y adapta la paleta de la app según el fondo de pantalla de tu dispositivo.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = dynamicColorConfig,
+                            onCheckedChange = { viewModel.setDynamicColorConfig(it) },
+                            modifier = Modifier.testTag("switch_dynamic_colors")
+                        )
+                    }
+
+                    // Selector de Tema (Sistema / Claro / Oscuro)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Modo de Pantalla:",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = darkThemeConfig == DarkThemeConfig.SYSTEM,
+                                onClick = { viewModel.setDarkThemeConfig(DarkThemeConfig.SYSTEM) },
+                                label = { Text("Sistema", fontSize = 11.sp) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.BrightnessAuto, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                                modifier = Modifier.weight(1f).testTag("chip_theme_system")
+                            )
+                            FilterChip(
+                                selected = darkThemeConfig == DarkThemeConfig.LIGHT,
+                                onClick = { viewModel.setDarkThemeConfig(DarkThemeConfig.LIGHT) },
+                                label = { Text("Claro", fontSize = 11.sp) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.LightMode, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                                modifier = Modifier.weight(1f).testTag("chip_theme_light")
+                            )
+                            FilterChip(
+                                selected = darkThemeConfig == DarkThemeConfig.DARK,
+                                onClick = { viewModel.setDarkThemeConfig(DarkThemeConfig.DARK) },
+                                label = { Text("Oscuro", fontSize = 11.sp) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.DarkMode, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                                modifier = Modifier.weight(1f).testTag("chip_theme_dark")
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Contacto / Soporte AcaMandados
         item {
             Card(
@@ -1010,6 +1176,141 @@ fun PerfilScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Seguridad, Privacidad y Autorización de Datos (Cumplimiento Legal y Google Play)
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
+                    .testTag("card_seguridad_privacidad")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Seguridad y Privacidad de Datos",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AcaAzulDark
+                    )
+                    Text(
+                        text = "Gestiona tus autorizaciones de geolocalización, consulta el aviso de privacidad integral o solicita la eliminación de tu cuenta.",
+                        fontSize = 11.5.sp,
+                        color = AcaGrisSubtle
+                    )
+
+                    HorizontalDivider(color = Color(0xFFF1F5F9))
+
+                    // Fila: Políticas de Seguridad y Aviso de Privacidad
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF8FAFC),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { viewModel.openPrivacyPolicyScreen() }
+                            .testTag("btn_perfil_politicas_seguridad")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(AcaAzulConfianza.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Security, contentDescription = null, tint = AcaAzulConfianza, modifier = Modifier.size(20.dp))
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Políticas de Seguridad y Privacidad", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = AcaAzulDark)
+                                Text("Aviso integral LFPDPPP, encriptación y medidas contra fraude", fontSize = 10.5.sp, color = AcaGrisSubtle)
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AcaGrisSubtle, modifier = Modifier.size(20.dp))
+                        }
+                    }
+
+                    // Fila: Autorización y Permisos de Datos
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF8FAFC),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { viewModel.openAutorizacionDatosDialog() }
+                            .testTag("btn_perfil_autorizacion_datos")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(AcaTurquesaDark.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.PrivacyTip, contentDescription = null, tint = AcaTurquesaDark, modifier = Modifier.size(20.dp))
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Autorización de Datos y Consentimientos", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = AcaAzulDark)
+                                Text("Permisos de GPS en vivo, notificaciones y resguardo local", fontSize = 10.5.sp, color = AcaGrisSubtle)
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AcaGrisSubtle, modifier = Modifier.size(20.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Botón Cerrar Sesión
+                    OutlinedButton(
+                        onClick = { viewModel.logout() },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("btn_perfil_cerrar_sesion")
+                    ) {
+                        Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Cerrar Sesión", fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // Botón Eliminar Cuenta y Datos (Cumplimiento de Políticas de Google Play)
+                    Button(
+                        onClick = { viewModel.openDeleteAccountDialog() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFEE2E2),
+                            contentColor = Color(0xFFDC2626)
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("btn_perfil_eliminar_cuenta")
+                    ) {
+                        Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Eliminar Mi Cuenta y Datos", fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
                     }
                 }
             }

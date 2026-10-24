@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -64,6 +65,12 @@ fun HistorialOrdenesScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("TODOS") } // TODOS, EFECTIVO, TARJETA, COMIDA, FARMACIA, COMPRAS, EXPRESS
     var selectedOrderForReceipt by remember { mutableStateOf<MandadoOrder?>(null) }
+
+    if (selectedOrderForReceipt != null) {
+        BackHandler { selectedOrderForReceipt = null }
+    } else if (onBack != null) {
+        BackHandler { onBack() }
+    }
 
     // Filtrado de órdenes según la perspectiva (Cliente o Repartidor)
     val baseOrders = remember(allOrders, driverCompletedOrders, viewMode) {

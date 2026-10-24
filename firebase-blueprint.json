@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "UserProfile": {
+      "collection": "user_profiles",
+      "fields": {
+        "uid": { "type": "string", "required": true },
+        "nombre": { "type": "string", "required": true },
+        "email": { "type": "string", "required": false },
+        "telefono": { "type": "string", "required": false },
+        "rol": { "type": "string", "required": true },
+        "fotoUrl": { "type": "string", "required": false },
+        "tipoTransporte": { "type": "string", "required": false },
+        "modeloVehiculo": { "type": "string", "required": false },
+        "placas": { "type": "string", "required": false },
+        "clabeInterbancaria": { "type": "string", "required": false },
+        "banco": { "type": "string", "required": false },
+        "suscripcionActiva": { "type": "boolean", "required": false },
+        "disponibleParaMandados": { "type": "boolean", "required": false },
+        "ultimaActividad": { "type": "number", "required": false }
+      }
+    },
+    "OrderRequest": {
+      "collection": "order_requests",
+      "fields": {
+        "id": { "type": "number", "required": true },
+        "folio": { "type": "string", "required": true },
+        "tipo": { "type": "string", "required": true },
+        "titulo": { "type": "string", "required": true },
+        "descripcion": { "type": "string", "required": false },
+        "puntoRecogida": { "type": "string", "required": true },
+        "zonaRecogida": { "type": "string", "required": true },
+        "puntoEntrega": { "type": "string", "required": true },
+        "zonaEntrega": { "type": "string", "required": true },
+        "costoProductosEstimado": { "type": "number", "required": false },
+        "tarifaEnvio": { "type": "number", "required": true },
+        "metodoPago": { "type": "string", "required": true },
+        "estado": { "type": "string", "required": true },
+        "clienteNombre": { "type": "string", "required": true },
+        "clienteTelefono": { "type": "string", "required": false },
+        "remitenteNombre": { "type": "string", "required": false },
+        "remitenteTelefono": { "type": "string", "required": false },
+        "destinatarioNombre": { "type": "string", "required": false },
+        "destinatarioTelefono": { "type": "string", "required": false },
+        "referenciasDomicilio": { "type": "string", "required": false },
+        "pinSeguridad": { "type": "string", "required": true },
+        "tamanoPaquete": { "type": "string", "required": false },
+        "repartidorId": { "type": "number", "required": false },
+        "repartidorNombre": { "type": "string", "required": false },
+        "repartidorTelefono": { "type": "string", "required": false },
+        "fechaCreacion": { "type": "number", "required": true }
+      }
+    },
+    "ActiveDelivery": {
+      "collection": "active_deliveries",
+      "fields": {
+        "orderId": { "type": "number", "required": true },
+        "repartidorId": { "type": "number", "required": false },
+        "lat": { "type": "number", "required": true },
+        "lng": { "type": "number", "required": true },
+        "speedKmh": { "type": "number", "required": false },
+        "bearing": { "type": "number", "required": false },
+        "distanciaKmRestante": { "type": "number", "required": false },
+        "tiempoMinutosRestante": { "type": "number", "required": false },
+        "ultimaActualizacion": { "type": "number", "required": true }
+      }
+    }
+  }
+}

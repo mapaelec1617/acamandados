@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,6 +41,8 @@ fun EditarPerfilScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    BackHandler { onBack() }
+
     val currentMode by viewModel.currentMode.collectAsStateWithLifecycle()
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
     val repartidorProfile by viewModel.repartidorProfile.collectAsStateWithLifecycle()

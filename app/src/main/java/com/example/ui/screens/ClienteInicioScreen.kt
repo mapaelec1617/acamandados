@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +51,7 @@ import java.util.Locale
  * Pantalla de Inicio / Dashboard Principal para el rol 'Cliente'.
  * Se muestra inmediatamente después de la autenticación cuando el rol guardado en Firestore es 'Cliente'.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClienteInicioScreen(
     viewModel: MandadosViewModel,
@@ -60,6 +62,7 @@ fun ClienteInicioScreen(
     val activeOrders by viewModel.activeOrders.collectAsStateWithLifecycle()
     val allOrders by viewModel.allOrders.collectAsStateWithLifecycle()
     val driverLoc by viewModel.driverLocationState.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
     val activeOrder = activeOrders.firstOrNull()
     val completedOrders = remember(allOrders) {
@@ -82,14 +85,21 @@ fun ClienteInicioScreen(
         }.split(" ").firstOrNull() ?: "Cliente"
     }
 
-    LazyColumn(
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { viewModel.refreshData() },
         modifier = modifier
             .fillMaxSize()
-            .background(AcaBackground)
-            .testTag("screen_cliente_dashboard"),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 95.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .testTag("pull_to_refresh_cliente_inicio")
     ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(AcaBackground)
+                .testTag("screen_cliente_dashboard"),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 95.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         // 1. HEADER DE BIENVENIDA CON ROL Y UBICACIÓN
         item {
             Card(
@@ -532,6 +542,7 @@ fun ClienteInicioScreen(
             }
         }
     }
+}
 }
 
 @Composable

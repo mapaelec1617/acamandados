@@ -130,7 +130,7 @@ fun NotificationCenterSheet(
                 )
             }
 
-            Divider(color = Color(0xFFE2E8F0))
+            HorizontalDivider(color = Color(0xFFE2E8F0))
 
             if (filteredList.isEmpty()) {
                 Box(
@@ -282,6 +282,32 @@ private fun NotificationItemCard(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
+                    }
+                }
+
+                if (item.tipo == "NUEVA_SOLICITUD") {
+                    Button(
+                        onClick = onClick,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AcaTurquesa),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ElectricScooter,
+                            contentDescription = null,
+                            tint = Color(0xFF00382E),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "🛵 Ver y Aceptar Mandado",
+                            color = Color(0xFF00382E),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }

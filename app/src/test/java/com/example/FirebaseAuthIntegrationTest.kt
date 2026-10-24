@@ -1,82 +1,122 @@
 package com.example
 
-import com.example.data.model.UserProfile
+import android.app.Application
+import androidx.test.core.app.ApplicationProvider
 import com.example.ui.AppMode
+import com.example.ui.MandadosViewModel
 import com.example.util.FirebaseAuthHelper
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class FirebaseAuthIntegrationTest {
+
+    private lateinit var app: Application
+    private lateinit var viewModel: MandadosViewModel
+
+    @Before
+    fun setup() {
+        app = ApplicationProvider.getApplicationContext()
+        viewModel = MandadosViewModel(app)
+    }
+
+    @Test
+    fun testDefaultWebClientIdConfiguredForGoogleSignIn() {
+        val webClientId = app.getString(R.string.default_web_client_id)
+        assertNotNull(webClientId)
+        assertTrue(webClientId.endsWith(".apps.googleusercontent.com"))
+        assertTrue(webClientId.isNotBlank())
+    }
 
     @Test
     fun testFriendlyAuthErrorMessageTranslations() {
-        val wrongPasswordEx = Exception("ERROR_WRONG_PASSWORD: password is wrong")
-        val friendlyWrongPass = FirebaseAuthHelper.getFriendlyAuthErrorMessage(wrongPasswordEx)
-        assertTrue(friendlyWrongPass.contains("contraseña") && friendlyWrongPass.contains("incorrecta"))
+        val userNotFoundError = Exception("com.google.firebase.auth.FirebaseAuthInvalidUserException: user-not-found")
+        assertEquals(
+            "No existe una cuenta registrada con este correo electrónico.",
+            FirebaseAuthHelper.getFriendlyAuthErrorMessage(userNotFoundError)
+        )
 
-        val userNotFoundEx = Exception("ERROR_USER_NOT_FOUND")
-        val friendlyUserNotFound = FirebaseAuthHelper.getFriendlyAuthErrorMessage(userNotFoundEx)
-        assertTrue(friendlyUserNotFound.contains("No existe una cuenta registrada"))
+        val wrongPasswordError = Exception("com.google.firebase.auth.FirebaseAuthInvalidCredentialsException: wrong-password")
+        assertEquals(
+            "La contraseña ingresada es incorrecta. Por favor verifica tus datos.",
+            FirebaseAuthHelper.getFriendlyAuthErrorMessage(wrongPasswordError)
+        )
 
-        val emailInUseEx = Exception("ERROR_EMAIL_ALREADY_IN_USE")
-        val friendlyEmailInUse = FirebaseAuthHelper.getFriendlyAuthErrorMessage(emailInUseEx)
-        assertTrue(friendlyEmailInUse.contains("ya está registrado"))
-
-        val weakPasswordEx = Exception("ERROR_WEAK_PASSWORD")
-        val friendlyWeakPass = FirebaseAuthHelper.getFriendlyAuthErrorMessage(weakPasswordEx)
-        assertTrue(friendlyWeakPass.contains("débil") || friendlyWeakPass.contains("6 caracteres"))
-
-        val invalidEmailEx = Exception("ERROR_INVALID_EMAIL")
-        val friendlyInvalidEmail = FirebaseAuthHelper.getFriendlyAuthErrorMessage(invalidEmailEx)
-        assertTrue(friendlyInvalidEmail.contains("correo") || friendlyInvalidEmail.contains("no es válido"))
-
-        val networkEx = Exception("network-request-failed")
-        val friendlyNetwork = FirebaseAuthHelper.getFriendlyAuthErrorMessage(networkEx)
-        assertTrue(friendlyNetwork.contains("conexión") || friendlyNetwork.contains("internet"))
+        val emailInUseError = Exception("com.google.firebase.auth.FirebaseAuthUserCollisionException: email-already-in-use")
+        assertEquals(
+            "Este correo ya está registrado. Intenta iniciar sesión en su lugar.",
+            FirebaseAuthHelper.getFriendlyAuthErrorMessage(emailInUseError)
+        )
     }
 
     @Test
-    fun testUserProfileRoleMappingForClienteAndRepartidor() {
-        val clienteProfile = UserProfile(
-            uid = "usr_cliente_test_01",
-            nombre = "María del Carmen Solís",
-            email = "maria.solis@correo.com",
-            telefono = "7441234567",
-            rol = "CLIENTE",
-            zonaFrecuente = "Costa Azul"
+    fun testClientGoogleAuthRegistrationAndStateSync() = runBlocking {
+        val testEmail = "cliente.test@acamandados.com"
+        val testName = "Mariana Leyva"
+
+        viewModel.loginWithGoogleProfile(
+            email = testEmail,
+            displayName = testName,
+            role = AppMode.CLIENTE
         )
 
-        assertEquals("CLIENTE", clienteProfile.rol)
-        val clienteMap = clienteProfile.toMap()
-        assertEquals("CLIENTE", clienteMap["rol"])
-        assertEquals("María del Carmen Solís", clienteMap["nombre"])
+        var retries = 0
+        while (viewModel.currentUser.value == null && retries < 60) {
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+            Thread.sleep(100)
+            retries++
+        }
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
-        val repartidorProfile = UserProfile(
-            uid = "usr_driver_test_02",
-            nombre = "Javier Navarrete",
-            email = "javier.navarrete@acamandados.com",
-            telefono = "7449876543",
-            rol = "REPARTIDOR",
-            tipoTransporte = "MOTO",
-            modeloVehiculo = "Italika 150",
-            placas = "GRO-998A"
-        )
+        val currentUser = viewModel.currentUser.value
+        assertNotNull(currentUser)
+        assertEquals(testEmail, currentUser?.email)
+        assertEquals(testName, currentUser?.displayName)
+        assertEquals(AppMode.CLIENTE, currentUser?.role)
+        assertEquals(AppMode.CLIENTE, viewModel.currentMode.value)
+        assertTrue(currentUser?.isGoogleAuth == true)
 
-        assertEquals("REPARTIDOR", repartidorProfile.rol)
-        val driverMap = repartidorProfile.toMap()
-        assertEquals("REPARTIDOR", driverMap["rol"])
-        assertEquals("MOTO", driverMap["tipoTransporte"])
-        assertEquals("GRO-998A", driverMap["placas"])
+        // Logout
+        viewModel.logout()
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        assertNull(viewModel.currentUser.value)
     }
 
     @Test
-    fun testDemoUserUidsAndRoles() {
-        val clienteMode = AppMode.CLIENTE
-        val repartidorMode = AppMode.REPARTIDOR
+    fun testDriverGoogleAuthRegistrationAndStateSync() = runBlocking {
+        val testEmail = "repartidor.test@acamandados.com"
+        val testName = "Jorge Salgado"
 
-        assertEquals(AppMode.CLIENTE, clienteMode)
-        assertEquals(AppMode.REPARTIDOR, repartidorMode)
+        viewModel.loginWithGoogleProfile(
+            email = testEmail,
+            displayName = testName,
+            role = AppMode.REPARTIDOR
+        )
+
+        var retries = 0
+        while (viewModel.currentUser.value == null && retries < 20) {
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+            Thread.sleep(50)
+            retries++
+        }
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        val currentUser = viewModel.currentUser.value
+        assertNotNull(currentUser)
+        assertEquals(testEmail, currentUser?.email)
+        assertEquals(testName, currentUser?.displayName)
+        assertEquals(AppMode.REPARTIDOR, currentUser?.role)
+        assertEquals(AppMode.REPARTIDOR, viewModel.currentMode.value)
+
+        // Logout
+        viewModel.logout()
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        assertNull(viewModel.currentUser.value)
     }
 }

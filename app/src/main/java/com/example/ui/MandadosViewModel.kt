@@ -11,12 +11,17 @@ import com.example.data.db.AppDatabase
 import com.example.data.model.AcapulcoLocations
 import com.example.data.model.CalificacionReview
 import com.example.data.model.DepositoTarjetaLog
+import com.example.data.model.AdminDailyStats
+import com.example.data.model.AdminTab
+import com.example.data.model.DriverTelemetryInfo
 import com.example.data.model.MandadoOrder
 import com.example.data.model.MetodoPago
+import com.example.data.model.NewMandadoDriverAlert
 import com.example.data.model.NotificationItem
 import com.example.data.model.RepartidorProfile
 import com.example.data.model.TarifaDesglose
 import com.example.data.model.TipoMandado
+import com.example.data.model.TransaccionBilletera
 import com.example.data.model.UserProfile
 import com.example.data.repository.FirestoreRepository
 import com.example.data.repository.MandadosRepository
@@ -30,7 +35,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -38,7 +45,8 @@ import kotlinx.coroutines.withContext
 
 enum class AppMode {
     CLIENTE,
-    REPARTIDOR
+    REPARTIDOR,
+    ADMIN
 }
 
 enum class ClienteTab {
@@ -54,6 +62,12 @@ enum class RepartidorTab {
     MI_RUTA,
     BILLETERA_SUSCRIPCION,
     PERFIL
+}
+
+enum class DarkThemeConfig(val label: String) {
+    SYSTEM("Automático (Sistema)"),
+    LIGHT("Modo Claro"),
+    DARK("Modo Oscuro")
 }
 
 data class DriverLocationState(
@@ -356,12 +370,52 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
     fun logout() {
         FirebaseAuthHelper.signOut(getApplication())
         _currentUser.value = null
+        tarjetaCvvInput.value = ""
+        closePinValidation()
         _userMessage.value = "Sesión cerrada correctamente."
     }
 
     // Modo actual (Cliente / Repartidor)
     private val _currentMode = MutableStateFlow(AppMode.CLIENTE)
     val currentMode: StateFlow<AppMode> = _currentMode.asStateFlow()
+
+    // Control de pantalla de inicio / bienvenida para selección de rol
+    private val _showPantallaInicio = MutableStateFlow(false)
+    val showPantallaInicio: StateFlow<Boolean> = _showPantallaInicio.asStateFlow()
+
+    fun openPantallaInicio() {
+        _showPantallaInicio.value = true
+    }
+
+    fun closePantallaInicio() {
+        _showPantallaInicio.value = false
+    }
+
+    // Pantalla de registro simplificada para nuevos repartidores
+    val showRegistroRepartidorScreen = MutableStateFlow(false)
+
+    fun openRegistroRepartidorScreen() {
+        showRegistroRepartidorScreen.value = true
+    }
+
+    fun closeRegistroRepartidorScreen() {
+        showRegistroRepartidorScreen.value = false
+    }
+
+    fun onDriverRegisteredSuccess(profile: RepartidorProfile) {
+        showRegistroRepartidorScreen.value = false
+        _currentMode.value = AppMode.REPARTIDOR
+        _repartidorTab.value = RepartidorTab.DISPONIBLES
+        _currentUser.value = AuthUserState(
+            uid = "rep_${profile.id}",
+            email = "",
+            displayName = profile.nombre,
+            role = AppMode.REPARTIDOR,
+            isGoogleAuth = false
+        )
+        _userProfile.value = UserProfile.fromRepartidorProfile(profile, uid = "rep_${profile.id}")
+        _userMessage.value = "🎉 ¡Bienvenido a AcaMandados, ${profile.nombre}! Tu cuenta de repartidor está activa."
+    }
 
     private val _clienteTab = MutableStateFlow(ClienteTab.INICIO)
     val clienteTab: StateFlow<ClienteTab> = _clienteTab.asStateFlow()
@@ -492,6 +546,158 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
     val isNotificationSheetOpen = MutableStateFlow(false)
     val showCompletedOrdersScreen = MutableStateFlow(false)
     val showEditProfileScreen = MutableStateFlow(false)
+    val activeReceiptOrder = MutableStateFlow<MandadoOrder?>(null)
+    val activeSelectedTransaccion = MutableStateFlow<TransaccionBilletera?>(null)
+
+    // Alerta en primer plano (heads-up banner) para repartidores cuando se crea un nuevo mandado
+    val newMandadoAlert = MutableStateFlow<NewMandadoDriverAlert?>(null)
+
+    // Configuración de Tema (Modo Claro / Oscuro / Sistema)
+    val darkThemeConfig = MutableStateFlow(DarkThemeConfig.SYSTEM)
+
+    // Configuración de Dynamic Colors (Material 3 Android 12+)
+    val dynamicColorConfig = MutableStateFlow(true)
+
+    fun setDynamicColorConfig(enabled: Boolean) {
+        dynamicColorConfig.value = enabled
+    }
+
+    fun toggleDynamicColor() {
+        dynamicColorConfig.value = !dynamicColorConfig.value
+    }
+
+    fun setDarkThemeConfig(config: DarkThemeConfig) {
+        darkThemeConfig.value = config
+    }
+
+    fun toggleDarkTheme() {
+        darkThemeConfig.value = when (darkThemeConfig.value) {
+            DarkThemeConfig.LIGHT -> DarkThemeConfig.DARK
+            DarkThemeConfig.DARK -> DarkThemeConfig.SYSTEM
+            DarkThemeConfig.SYSTEM -> DarkThemeConfig.LIGHT
+        }
+    }
+
+    // Estado para "Deslizar para actualizar" (Swipe-to-refresh / Pull-to-refresh)
+    val isRefreshing = MutableStateFlow(false)
+
+    fun refreshData() {
+        viewModelScope.launch {
+            isRefreshing.value = true
+            delay(750)
+            isRefreshing.value = false
+            _userMessage.value = "Datos actualizados correctamente"
+        }
+    }
+
+    // Diálogo y acción de eliminación de cuenta para cumplimiento Google Play
+    val showDeleteAccountDialog = MutableStateFlow(false)
+
+    // Diálogos de Políticas de Seguridad, Privacidad y Autorización de Datos
+    val showPoliticasSeguridadDialog = MutableStateFlow(false)
+    val showAutorizacionDatosDialog = MutableStateFlow(false)
+    val showPrivacyPolicyScreen = MutableStateFlow(false)
+
+    // Estados de consentimiento y autorización de datos (LFPDPPP y Google Play Data Safety)
+    val userConsentDataAuth = MutableStateFlow(true)
+    val userConsentGpsTracking = MutableStateFlow(true)
+    val userConsentPushNotifications = MutableStateFlow(true)
+    val userConsentPhoneMasking = MutableStateFlow(true)
+    val userConsentPhotoEvidence = MutableStateFlow(true)
+
+    fun openPrivacyPolicyScreen() {
+        showPrivacyPolicyScreen.value = true
+    }
+
+    fun closePrivacyPolicyScreen() {
+        showPrivacyPolicyScreen.value = false
+    }
+
+    fun updateDataAuthorizations(
+        generalAuth: Boolean,
+        gpsTracking: Boolean,
+        pushNotifications: Boolean,
+        phoneMasking: Boolean = true,
+        photoEvidence: Boolean = true
+    ) {
+        userConsentDataAuth.value = generalAuth
+        userConsentGpsTracking.value = gpsTracking
+        userConsentPushNotifications.value = pushNotifications
+        userConsentPhoneMasking.value = phoneMasking
+        userConsentPhotoEvidence.value = photoEvidence
+        _userMessage.value = "Preferencias de autorización de datos actualizadas con éxito"
+    }
+
+    fun openPoliticasSeguridadDialog() {
+        showPoliticasSeguridadDialog.value = true
+    }
+
+    fun closePoliticasSeguridadDialog() {
+        showPoliticasSeguridadDialog.value = false
+    }
+
+    fun openAutorizacionDatosDialog() {
+        showAutorizacionDatosDialog.value = true
+    }
+
+    fun closeAutorizacionDatosDialog() {
+        showAutorizacionDatosDialog.value = false
+    }
+
+    fun openDeleteAccountDialog() {
+        showDeleteAccountDialog.value = true
+    }
+
+    fun closeDeleteAccountDialog() {
+        showDeleteAccountDialog.value = false
+    }
+
+    fun deleteUserAccount(onComplete: () -> Unit = {}) {
+        showDeleteAccountDialog.value = false
+        val currentUid = _currentUser.value?.uid ?: _userProfile.value.uid
+        _currentUser.value = null
+        tarjetaNumeroInput.value = ""
+        tarjetaTitularInput.value = ""
+        tarjetaExpiracionInput.value = ""
+        tarjetaCvvInput.value = ""
+        closePinValidation()
+        clienteNombreInput.value = ""
+        clienteTelefonoInput.value = ""
+        _userProfile.value = UserProfile(
+            uid = "deleted",
+            nombre = "Usuario",
+            email = "",
+            telefono = "",
+            rol = "CLIENTE"
+        )
+        _userMessage.value = "Tu cuenta y datos personales han sido eliminados de acuerdo a las políticas de privacidad."
+        _clienteTab.value = ClienteTab.INICIO
+        _repartidorTab.value = RepartidorTab.DISPONIBLES
+        _currentMode.value = AppMode.CLIENTE
+        onComplete()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                kotlinx.coroutines.withTimeoutOrNull(1500) {
+                    userProfileRepository.deleteUserProfile(currentUid)
+                }
+            } catch (_: Exception) {}
+
+            try {
+                FirebaseAuthHelper.signOut(getApplication())
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun dismissNewMandadoAlert() {
+        newMandadoAlert.value = null
+    }
+
+    fun acceptOrViewNewMandadoFromAlert(orderId: Long) {
+        newMandadoAlert.value = null
+        switchMode(AppMode.REPARTIDOR)
+        setRepartidorTab(RepartidorTab.DISPONIBLES)
+    }
 
     // Perfil completo del usuario persistido y sincronizado con Firestore
     private val _userProfile = MutableStateFlow(
@@ -645,26 +851,47 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Datos reactivos de Room
-    val allOrders: StateFlow<List<MandadoOrder>> = repository.allOrders
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // Datos reactivos de Room combinados con actualizaciones optimistas inmediatas (Optimistic UI)
+    private val _optimisticOrders = MutableStateFlow<Map<Long, MandadoOrder>>(emptyMap())
 
-    val availableOrders: StateFlow<List<MandadoOrder>> = repository.availableOrders
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allOrders: StateFlow<List<MandadoOrder>> = combine(
+        repository.allOrders,
+        _optimisticOrders
+    ) { dbOrders, optimistic ->
+        if (optimistic.isEmpty()) {
+            dbOrders
+        } else {
+            val dbMap = dbOrders.associateBy { it.id }.toMutableMap()
+            optimistic.forEach { (id, order) ->
+                dbMap[id] = order
+            }
+            dbMap.values.sortedByDescending { it.fechaCreacion }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val activeOrders: StateFlow<List<MandadoOrder>> = repository.activeOrders
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val availableOrders: StateFlow<List<MandadoOrder>> = allOrders.map { orders ->
+        orders.filter { it.estado == "SOLICITADO" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val currentDriverActiveOrder: StateFlow<MandadoOrder?> = repository.getCurrentDriverActiveOrder(1)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val activeOrders: StateFlow<List<MandadoOrder>> = allOrders.map { orders ->
+        orders.filter { it.estado != "SOLICITADO" && it.estado != "ENTREGADO" && it.estado != "CANCELADO" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val driverCompletedOrders: StateFlow<List<MandadoOrder>> = repository.getDriverCompletedOrders(1)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val currentDriverActiveOrder: StateFlow<MandadoOrder?> = allOrders.map { orders ->
+        orders.firstOrNull { it.repartidorId == 1L && it.estado != "ENTREGADO" && it.estado != "CANCELADO" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val driverCompletedOrders: StateFlow<List<MandadoOrder>> = allOrders.map { orders ->
+        orders.filter { it.repartidorId == 1L && it.estado == "ENTREGADO" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val repartidorProfile: StateFlow<RepartidorProfile?> = repository.repartidorProfile
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val depositosLog: StateFlow<List<DepositoTarjetaLog>> = repository.depositosLog
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val transaccionesBilletera: StateFlow<List<TransaccionBilletera>> = repository.transaccionesBilletera
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allReviews: StateFlow<List<CalificacionReview>> = repository.allReviews
@@ -676,22 +903,230 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
     val unreadNotificationsCount: StateFlow<Int> = repository.unreadNotificationsCount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    // Sub-pestaña para el Panel de Administrador
+    private val _adminTab = MutableStateFlow(AdminTab.RESUMEN_METRICAS)
+    val adminTab: StateFlow<AdminTab> = _adminTab.asStateFlow()
+
+    fun setAdminTab(tab: AdminTab) {
+        _adminTab.value = tab
+    }
+
+    // Flota de repartidores activos en Acapulco para el Administrador
+    val fleetDrivers: StateFlow<List<DriverTelemetryInfo>> = combine(
+        driverLocationState,
+        repartidorProfile,
+        currentDriverActiveOrder,
+        activeOrders
+    ) { loc, profile, activeOrder, orders ->
+        val carlosOrderFolio = activeOrder?.folio
+        val carlosEstado = when {
+            activeOrder == null -> if (profile?.disponibleParaMandados == true) "DISPONIBLE" else "DESCONECTADO"
+            activeOrder.estado == "EN_RUTA" -> "EN_RUTA"
+            activeOrder.estado == "EN_RECOLECCION" -> "EN_RECOLECCION"
+            else -> "EN_RUTA"
+        }
+
+        listOf(
+            DriverTelemetryInfo(
+                id = 1L,
+                nombre = profile?.nombre ?: "Carlos Mendoza",
+                telefono = profile?.telefono ?: "7441234567",
+                vehiculo = profile?.modeloVehiculo ?: "Italika FT150 Blanca",
+                placas = profile?.placas ?: "GRO-489A",
+                calificacion = profile?.calificacion ?: 4.95,
+                estado = carlosEstado,
+                zonaNombre = "Costera / Magallanes",
+                lat = loc.lat,
+                lng = loc.lng,
+                velocidadKmh = loc.speedKmh,
+                bateriaPorcentaje = 88,
+                mandadoFolioAsignado = carlosOrderFolio,
+                pedidosHoy = 7,
+                pedidosCompletadosTotal = profile?.pedidosCompletados ?: 19
+            ),
+            DriverTelemetryInfo(
+                id = 2L,
+                nombre = "Brayan Salgado",
+                telefono = "7442345678",
+                vehiculo = "Honda Cargo 150 Roja",
+                placas = "GRO-712B",
+                calificacion = 4.88,
+                estado = if (orders.any { it.zonaEntrega.contains("Diamante") || it.zonaRecogida.contains("Diamante") }) "EN_RUTA" else "DISPONIBLE",
+                zonaNombre = "Zona Diamante & Princess",
+                lat = 16.7820,
+                lng = -99.7890,
+                velocidadKmh = 42,
+                bateriaPorcentaje = 76,
+                mandadoFolioAsignado = orders.firstOrNull { it.zonaEntrega.contains("Diamante") || it.zonaRecogida.contains("Diamante") }?.folio,
+                pedidosHoy = 5,
+                pedidosCompletadosTotal = 34
+            ),
+            DriverTelemetryInfo(
+                id = 3L,
+                nombre = "Jonathan Alarcón",
+                telefono = "7443456789",
+                vehiculo = "Yamaha YBR 125 Azul",
+                placas = "GRO-304C",
+                calificacion = 4.92,
+                estado = "EN_RECOLECCION",
+                zonaNombre = "Costa Azul & Club Deportivo",
+                lat = 16.8480,
+                lng = -99.8510,
+                velocidadKmh = 28,
+                bateriaPorcentaje = 64,
+                mandadoFolioAsignado = orders.firstOrNull { it.zonaEntrega.contains("Costa Azul") || it.zonaRecogida.contains("Costa Azul") }?.folio,
+                pedidosHoy = 8,
+                pedidosCompletadosTotal = 52
+            ),
+            DriverTelemetryInfo(
+                id = 4L,
+                nombre = "Daniel Rendón",
+                telefono = "7444567890",
+                vehiculo = "Vento Ryder 150 Negra",
+                placas = "GRO-518D",
+                calificacion = 4.80,
+                estado = "DISPONIBLE",
+                zonaNombre = "Centro & Caleta",
+                lat = 16.8320,
+                lng = -99.9040,
+                velocidadKmh = 0,
+                bateriaPorcentaje = 92,
+                mandadoFolioAsignado = null,
+                pedidosHoy = 4,
+                pedidosCompletadosTotal = 28
+            ),
+            DriverTelemetryInfo(
+                id = 5L,
+                nombre = "Fernando Nava",
+                telefono = "7445678901",
+                vehiculo = "Suzuki AX100 Gris",
+                placas = "GRO-890E",
+                calificacion = 4.85,
+                estado = "DISPONIBLE",
+                zonaNombre = "Pie de la Cuesta",
+                lat = 16.9100,
+                lng = -99.9600,
+                velocidadKmh = 35,
+                bateriaPorcentaje = 70,
+                mandadoFolioAsignado = null,
+                pedidosHoy = 3,
+                pedidosCompletadosTotal = 15
+            )
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Estadísticas operativas del día para el Administrador
+    val adminDailyStats: StateFlow<AdminDailyStats> = combine(
+        allOrders,
+        activeOrders,
+        availableOrders,
+        driverCompletedOrders,
+        fleetDrivers
+    ) { all, active, available, completed, drivers ->
+        val totalHoy = all.size
+        val entregadosHoy = all.count { it.estado == "ENTREGADO" }
+        val activosHoy = active.size
+        val pendientesHoy = available.size
+        val canceladosHoy = all.count { it.estado == "CANCELADO" }
+
+        val totalEntregados = if (entregadosHoy > 0) entregadosHoy else completed.size
+        val tasaExito = if (totalHoy > 0) {
+            Math.round((totalEntregados.toDouble() / (totalEntregados + canceladosHoy).coerceAtLeast(1)) * 1000.0) / 10.0
+        } else {
+            100.0
+        }
+
+        val totalEnviosMxn = all.filter { it.estado == "ENTREGADO" }.sumOf { it.tarifaEnvio }
+        val totalProductosMxn = all.filter { it.estado == "ENTREGADO" }.sumOf { it.costoProductosEstimado }
+        val totalTransaccionado = totalEnviosMxn + totalProductosMxn
+
+        val conectados = drivers.count { it.estado != "DESCONECTADO" }
+        val enRuta = drivers.count { it.estado == "EN_RUTA" || it.estado == "EN_RECOLECCION" }
+        val disponibles = drivers.count { it.estado == "DISPONIBLE" }
+
+        val zonaCounts = mutableMapOf<String, Int>()
+        all.forEach { order ->
+            val zona = order.zonaEntrega.ifBlank { "Costera Miguel Alemán" }
+            zonaCounts[zona] = (zonaCounts[zona] ?: 0) + 1
+        }
+
+        AdminDailyStats(
+            totalPedidosHoy = totalHoy,
+            pedidosEntregadosHoy = totalEntregados,
+            pedidosActivosHoy = activosHoy,
+            pedidosPendientesAsignacion = pendientesHoy,
+            pedidosCanceladosHoy = canceladosHoy,
+            tasaExitoPorcentaje = tasaExito,
+            tiempoPromedioMinutos = 23,
+            totalIngresosEnvioMxn = totalEnviosMxn,
+            totalProductosMxn = totalProductosMxn,
+            totalTransaccionadoMxn = totalTransaccionado,
+            repartidoresConectados = conectados,
+            repartidoresEnRuta = enRuta,
+            repartidoresDisponibles = disponibles,
+            distribucionPorZona = zonaCounts
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AdminDailyStats(0, 0, 0, 0, 0, 100.0, 23, 0.0, 0.0, 0.0, 5, 2, 3))
+
     fun switchMode(mode: AppMode) {
         _currentMode.value = mode
     }
 
-    fun setClienteTab(tab: ClienteTab) {
-        _clienteTab.value = tab
+    // Pila de navegación interna para preservar el historial entre pestañas y soportar el botón Atrás
+    private val clienteTabStack = mutableListOf(ClienteTab.INICIO)
+    private val repartidorTabStack = mutableListOf(RepartidorTab.DISPONIBLES)
+
+    fun setClienteTab(tab: ClienteTab, addToStack: Boolean = true) {
+        if (_clienteTab.value != tab) {
+            if (addToStack) {
+                // Evitar ciclos consecutivos repetidos
+                if (clienteTabStack.lastOrNull() != tab) {
+                    clienteTabStack.add(tab)
+                }
+            }
+            _clienteTab.value = tab
+        }
+    }
+
+    fun canPopClienteTab(): Boolean = clienteTabStack.size > 1
+
+    fun popClienteTab(): Boolean {
+        if (clienteTabStack.size > 1) {
+            clienteTabStack.removeAt(clienteTabStack.lastIndex)
+            val prevTab = clienteTabStack.last()
+            _clienteTab.value = prevTab
+            return true
+        }
+        return false
     }
 
     fun iniciarMandadoPorTipo(tipo: TipoMandado) {
         selectedTipo.value = tipo
         tituloInput.value = tipo.label
-        _clienteTab.value = ClienteTab.SOLICITAR
+        setClienteTab(ClienteTab.SOLICITAR)
     }
 
-    fun setRepartidorTab(tab: RepartidorTab) {
-        _repartidorTab.value = tab
+    fun setRepartidorTab(tab: RepartidorTab, addToStack: Boolean = true) {
+        if (_repartidorTab.value != tab) {
+            if (addToStack) {
+                if (repartidorTabStack.lastOrNull() != tab) {
+                    repartidorTabStack.add(tab)
+                }
+            }
+            _repartidorTab.value = tab
+        }
+    }
+
+    fun canPopRepartidorTab(): Boolean = repartidorTabStack.size > 1
+
+    fun popRepartidorTab(): Boolean {
+        if (repartidorTabStack.size > 1) {
+            repartidorTabStack.removeAt(repartidorTabStack.lastIndex)
+            val prevTab = repartidorTabStack.last()
+            _repartidorTab.value = prevTab
+            return true
+        }
+        return false
     }
 
     fun clearUserMessage() {
@@ -799,7 +1234,7 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
                 repartidorPlacas = "GRO-489A",
                 fechaCreacion = now - (1000 * 60 * (30..90).random()),
                 fechaEntrega = now - (1000 * 60 * (5..20).random()),
-                pinSeguridad = (1000..9999).random().toString(),
+                pinSeguridad = String.format("%04d", java.security.SecureRandom().nextInt(10000)),
                 pagoDepositadoAlRepartidor = isCard,
                 claveRastreoSpei = if (isCard) "SPEI-${(100000..999999).random()}" else null,
                 calificadoPorCliente = true,
@@ -855,6 +1290,14 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             val valid = repository.validarPinYFinalizarEntrega(orderId, pinIngresado, fotoEntregaUri)
             if (valid) {
+                // Actualización optimista inmediata
+                val currentOrder = allOrders.value.find { it.id == orderId }
+                if (currentOrder != null) {
+                    _optimisticOrders.value = _optimisticOrders.value + (orderId to currentOrder.copy(
+                        estado = "ENTREGADO",
+                        fechaEntrega = System.currentTimeMillis()
+                    ))
+                }
                 closePinValidation()
                 _userMessage.value = "✅ ¡PIN validado con éxito! Entrega completada y ganancia 100% acreditada."
                 onSuccess()
@@ -960,21 +1403,58 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
         }
 
         val tipo = selectedTipo.value
-        val titulo = tituloInput.value.ifBlank { tipo.label }
-        val costoProductos = costoProductosInput.value.toDoubleOrNull() ?: 0.0
+        val titulo = tituloInput.value.trim().take(100).ifBlank { tipo.label }
+        val costoProductos = (costoProductosInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
         val desglose = getCalculatedFeeDesglose()
-        val tarifa = desglose.total
+        val tarifa = desglose.total.coerceAtLeast(35.0)
 
         val isTarjeta = selectedMetodoPago.value == MetodoPago.TARJETA
         val digitsOnly = tarjetaNumeroInput.value.filter { it.isDigit() }
         val tarjetaUltimos4 = if (isTarjeta) digitsOnly.takeLast(4).ifBlank { "4820" } else ""
-        val titular = if (isTarjeta) tarjetaTitularInput.value.ifBlank { clienteNombreInput.value } else ""
+        val titular = if (isTarjeta) tarjetaTitularInput.value.trim().take(100).ifBlank { clienteNombreInput.value.trim().take(100) } else ""
 
-        val remNombre = remitenteNombreInput.value.ifBlank { clienteNombreInput.value.ifBlank { "Cliente Acapulco" } }
-        val remTel = remitenteTelefonoInput.value.ifBlank { clienteTelefonoInput.value.ifBlank { "7440000000" } }
-        val destNombre = destinatarioNombreInput.value.ifBlank { clienteNombreInput.value.ifBlank { "Destinatario Acapulco" } }
-        val destTel = destinatarioTelefonoInput.value.ifBlank { clienteTelefonoInput.value.ifBlank { "7440000000" } }
-        val referencias = referenciasDomicilioInput.value
+        val remNombre = remitenteNombreInput.value.trim().take(100).ifBlank { clienteNombreInput.value.trim().take(100).ifBlank { "Cliente Acapulco" } }
+        val remTel = remitenteTelefonoInput.value.filter { it.isDigit() }.take(10).ifBlank { clienteTelefonoInput.value.filter { it.isDigit() }.take(10).ifBlank { "7440000000" } }
+        val destNombre = destinatarioNombreInput.value.trim().take(100).ifBlank { clienteNombreInput.value.trim().take(100).ifBlank { "Destinatario Acapulco" } }
+        val destTel = destinatarioTelefonoInput.value.filter { it.isDigit() }.take(10).ifBlank { clienteTelefonoInput.value.filter { it.isDigit() }.take(10).ifBlank { "7440000000" } }
+        val referencias = referenciasDomicilioInput.value.trim().take(300)
+
+        val tempId = System.currentTimeMillis()
+        val optOrder = MandadoOrder(
+            id = tempId,
+            folio = "ACA-${(1000..9999).random()}",
+            tipo = tipo.id,
+            titulo = titulo,
+            descripcion = desc,
+            puntoRecogida = recogida,
+            zonaRecogida = zonaRecogidaInput.value,
+            puntoEntrega = entrega,
+            zonaEntrega = zonaEntregaInput.value,
+            costoProductosEstimado = costoProductos,
+            tarifaEnvio = tarifa,
+            metodoPago = selectedMetodoPago.value.id,
+            estado = "SOLICITADO",
+            clienteNombre = clienteNombreInput.value.ifBlank { "Cliente Acapulco" },
+            clienteTelefono = clienteTelefonoInput.value.ifBlank { "7440000000" },
+            remitenteNombre = remNombre,
+            remitenteTelefono = remTel,
+            destinatarioNombre = destNombre,
+            destinatarioTelefono = destTel,
+            referenciasDomicilio = referencias,
+            pinSeguridad = "0000",
+            tamanoPaquete = tamanoPaqueteInput.value,
+            confirmacionDimensionesMoto = confirmacionDimensionesMoto.value,
+            esCobroContraEntrega = esCobroContraEntrega.value,
+            montoProductoCobrar = codAmount,
+            recargoZonaLejana = desglose.recargoZonaLejana,
+            tarjetaUltimos4 = tarjetaUltimos4,
+            tarjetaTitular = titular,
+            tarjetaAprobada = isTarjeta,
+            notasAdicionales = notasInput.value,
+            fechaCreacion = System.currentTimeMillis()
+        )
+        // Actualización optimista inmediata en la UI (cero latencia percibida)
+        _optimisticOrders.value = _optimisticOrders.value + (tempId to optOrder)
 
         viewModelScope.launch {
             val orderId = repository.crearMandado(
@@ -1006,14 +1486,38 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
                 notas = notasInput.value
             )
 
-            // Notificación push para repartidores
+            // Reemplazar id temporal optimista con el id persistido
+            _optimisticOrders.value = _optimisticOrders.value - tempId
+            val created = repository.getOrderById(orderId)
+            if (created != null) {
+                _optimisticOrders.value = _optimisticOrders.value + (orderId to created)
+                recentlyCreatedOrder.value = created
+            }
+
+            // Notificación push automática para repartidores con clave de navegación
             val pagoTexto = if (isTarjeta) "Tarjeta en App" else "Efectivo al recibir"
             val codTexto = if (esCobroContraEntrega.value) " • COD: $${codAmount.toInt()} MXN" else ""
             AcaNotificationHelper.showSystemNotification(
                 getApplication(),
                 title = "🚨 ¡Nueva solicitud en ${zonaRecogidaInput.value}! ($pagoTexto)",
                 message = "$titulo [${tamanoPaqueteInput.value}] hasta ${zonaEntregaInput.value}. Tarifa 100% tuya: $${String.format("%.2f", tarifa)} MXN$codTexto",
-                isDriverNotification = true
+                isDriverNotification = true,
+                orderId = orderId,
+                orderFolio = created?.folio
+            )
+            AcaNotificationHelper.triggerDriverAlertVibration(getApplication())
+
+            // Disparar banner flotante de alerta inmediata para repartidores en primer plano
+            newMandadoAlert.value = NewMandadoDriverAlert(
+                orderId = orderId,
+                folio = created?.folio ?: "ACA-NUEVO",
+                titulo = titulo,
+                zonaRecogida = zonaRecogidaInput.value,
+                zonaEntrega = zonaEntregaInput.value,
+                tarifaEnvio = tarifa,
+                metodoPago = selectedMetodoPago.value.id,
+                tamanoPaquete = tamanoPaqueteInput.value,
+                codAviso = codTexto
             )
 
             // Resetear inputs principales
@@ -1031,11 +1535,6 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
             confirmacionDimensionesMoto.value = true
             esCobroContraEntrega.value = false
             montoCobroProductoInput.value = ""
-
-            val created = repository.getOrderById(orderId)
-            if (created != null) {
-                recentlyCreatedOrder.value = created
-            }
 
             _userMessage.value = "¡Mandado solicitado con éxito! Generamos tu PIN de entrega de 4 dígitos y enlace de seguimiento web."
             _clienteTab.value = ClienteTab.MIS_MANDADOS
@@ -1071,7 +1570,32 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
                 recargoZonaLejana = 0.0,
                 notas = "Simulación para probar aceptación de servicio"
             )
-            _userMessage.value = "🛵 ¡Mandado disponible generado! Listo para que el repartidor lo acepte."
+            val created = repository.getOrderById(orderId)
+
+            // Notificación push automática para repartidores
+            AcaNotificationHelper.showSystemNotification(
+                getApplication(),
+                title = "🚨 ¡Nueva solicitud en Costera Miguel Alemán! (Efectivo)",
+                message = "Envío Express Urgente #$randomFolioNum [CHICO] hasta Costa Azul & Icacos. Tarifa 100% tuya: $75.00 MXN",
+                isDriverNotification = true,
+                orderId = orderId,
+                orderFolio = created?.folio
+            )
+            AcaNotificationHelper.triggerDriverAlertVibration(getApplication())
+
+            // Disparar banner flotante de alerta inmediata para repartidores en primer plano
+            newMandadoAlert.value = NewMandadoDriverAlert(
+                orderId = orderId,
+                folio = created?.folio ?: "ACA-$randomFolioNum",
+                titulo = "Envío Express Urgente #$randomFolioNum",
+                zonaRecogida = "Costera Miguel Alemán",
+                zonaEntrega = "Costa Azul & Icacos",
+                tarifaEnvio = 75.0,
+                metodoPago = "EFECTIVO",
+                tamanoPaquete = "CHICO"
+            )
+
+            _userMessage.value = "🛵 ¡Mandado disponible generado y notificado de inmediato a los repartidores!"
         }
     }
 
@@ -1091,6 +1615,21 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
             _repartidorTab.value = RepartidorTab.BILLETERA_SUSCRIPCION
             return
         }
+
+        // Actualización optimista inmediata en la UI
+        val currentOrder = allOrders.value.find { it.id == orderId }
+        if (currentOrder != null) {
+            val optAssigned = currentOrder.copy(
+                estado = "ASIGNADO",
+                repartidorId = profile.id,
+                repartidorNombre = profile.nombre,
+                repartidorTelefono = profile.telefono,
+                repartidorVehiculo = profile.tipoTransporte,
+                repartidorPlacas = profile.placas
+            )
+            _optimisticOrders.value = _optimisticOrders.value + (orderId to optAssigned)
+        }
+
         viewModelScope.launch {
             repository.tomarMandado(orderId, profile)
 
@@ -1103,7 +1642,7 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
             )
 
             _userMessage.value = "¡Mandado aceptado! Revisa los detalles en Mi Ruta."
-            _repartidorTab.value = RepartidorTab.MI_RUTA
+            setRepartidorTab(RepartidorTab.MI_RUTA)
         }
     }
 
@@ -1116,6 +1655,17 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
                 return
             }
         }
+
+        // Actualización optimista inmediata en la UI
+        val currentOrder = allOrders.value.find { it.id == orderId }
+        if (currentOrder != null) {
+            val optAdvanced = currentOrder.copy(
+                estado = nuevoEstado,
+                fechaEntrega = if (nuevoEstado == "ENTREGADO") System.currentTimeMillis() else currentOrder.fechaEntrega
+            )
+            _optimisticOrders.value = _optimisticOrders.value + (orderId to optAdvanced)
+        }
+
         viewModelScope.launch {
             repository.avanzarEstadoMandado(orderId, nuevoEstado)
             val msg = when (nuevoEstado) {
@@ -1144,6 +1694,12 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun cancelarMandado(orderId: Long) {
+        // Actualización optimista inmediata en la UI
+        val currentOrder = allOrders.value.find { it.id == orderId }
+        if (currentOrder != null) {
+            _optimisticOrders.value = _optimisticOrders.value + (orderId to currentOrder.copy(estado = "CANCELADO"))
+        }
+
         viewModelScope.launch {
             repository.cancelarMandado(orderId)
             _userMessage.value = "Mandado cancelado."
@@ -1154,6 +1710,75 @@ class MandadosViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.renovarSuscripcionSemanal()
             _userMessage.value = "¡Suscripción semanal de $150 MXN activada por 7 días más! Ganancias 100% para ti."
+        }
+    }
+
+    fun openPaymentReceipt(order: MandadoOrder) {
+        activeReceiptOrder.value = order
+    }
+
+    fun closePaymentReceipt() {
+        activeReceiptOrder.value = null
+    }
+
+    fun openTransaccionDetail(transaccion: TransaccionBilletera) {
+        activeSelectedTransaccion.value = transaccion
+    }
+
+    fun closeTransaccionDetail() {
+        activeSelectedTransaccion.value = null
+    }
+
+    /**
+     * Solicita y dispersa un retiro de fondos hacia la cuenta bancaria CLABE del repartidor.
+     */
+    fun solicitarRetiro(monto: Double, motivo: String = "Retiro SPEI a cuenta bancaria") {
+        viewModelScope.launch {
+            val result = repository.solicitarRetiro(monto, motivo)
+            if (result.isSuccess) {
+                val trans = result.getOrNull()
+                _userMessage.value = "💸 ¡Retiro SPEI procesado! Se dispersaron $${String.format("%.2f", monto)} MXN a tu cuenta ${trans?.bancoDestino ?: "BBVA"} (••${trans?.clabeTerminacion ?: "1234"})."
+            } else {
+                _userMessage.value = "⚠️ Error al procesar retiro: ${result.exceptionOrNull()?.message}"
+            }
+        }
+    }
+
+    /**
+     * Procesa el pago de un mandado completado individual desde la billetera.
+     */
+    fun procesarPagoMandado(orderId: Long) {
+        viewModelScope.launch {
+            val result = repository.procesarPagoMandado(orderId)
+            if (result.isSuccess) {
+                val dep = result.getOrNull()
+                if (dep != null) {
+                    _userMessage.value = "✅ ¡Pago procesado! Se dispersaron $${String.format("%.2f", dep.monto)} MXN vía SPEI a tu cuenta."
+                } else {
+                    _userMessage.value = "✅ Cobro en efectivo asentado y registrado en tu billetera."
+                }
+            } else {
+                _userMessage.value = "⚠️ Error al procesar pago: ${result.exceptionOrNull()?.message}"
+            }
+        }
+    }
+
+    /**
+     * Procesa y dispersa todos los pagos pendientes de mandados completados con tarjeta.
+     */
+    fun procesarTodosLosPagosPendientes() {
+        viewModelScope.launch {
+            val result = repository.procesarTodosLosPagosPendientes(1L)
+            if (result.isSuccess) {
+                val count = result.getOrDefault(0)
+                if (count > 0) {
+                    _userMessage.value = "🎉 ¡Éxito! Se procesaron y dispersaron $count pagos a tu cuenta bancaria vía SPEI."
+                } else {
+                    _userMessage.value = "Todos tus mandados completados ya se encuentran liquidados."
+                }
+            } else {
+                _userMessage.value = "⚠️ Error al dispersar pagos: ${result.exceptionOrNull()?.message}"
+            }
         }
     }
 

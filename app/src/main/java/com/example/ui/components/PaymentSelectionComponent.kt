@@ -42,6 +42,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.MetodoPago
@@ -234,9 +237,14 @@ fun PaymentSelectionComponent(
                     if (onTarjetaNumeroChange != null) {
                         OutlinedTextField(
                             value = tarjetaNumero,
-                            onValueChange = onTarjetaNumeroChange,
+                            onValueChange = { input ->
+                                if (input.length <= 19) {
+                                    onTarjetaNumeroChange(input.filter { it.isDigit() || it == ' ' })
+                                }
+                            },
                             label = { Text("Número de Tarjeta (16 dígitos)") },
                             singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -251,9 +259,14 @@ fun PaymentSelectionComponent(
                         ) {
                             OutlinedTextField(
                                 value = tarjetaExpiracion,
-                                onValueChange = onTarjetaExpiracionChange,
+                                onValueChange = { input ->
+                                    if (input.length <= 5) {
+                                        onTarjetaExpiracionChange(input)
+                                    }
+                                },
                                 label = { Text("MM/AA") },
                                 singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier
                                     .weight(1f)
@@ -261,9 +274,15 @@ fun PaymentSelectionComponent(
                             )
                             OutlinedTextField(
                                 value = tarjetaCvv,
-                                onValueChange = onTarjetaCvvChange,
+                                onValueChange = { input ->
+                                    if (input.length <= 4 && input.all { it.isDigit() }) {
+                                        onTarjetaCvvChange(input)
+                                    }
+                                },
                                 label = { Text("CVV") },
                                 singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier
                                     .weight(1f)

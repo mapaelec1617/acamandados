@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +67,7 @@ fun ClienteMisMandadosScreen(
     val context = LocalContext.current
     val allOrders by viewModel.allOrders.collectAsStateWithLifecycle()
     val driverLoc by viewModel.driverLocationState.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
     var selectedFilter by remember { mutableStateOf(EstadoEnvioFiltro.TODOS) }
     var searchQuery by remember { mutableStateOf("") }
@@ -111,14 +113,21 @@ fun ClienteMisMandadosScreen(
         }
     }
 
-    LazyColumn(
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { viewModel.refreshData() },
         modifier = modifier
             .fillMaxSize()
-            .background(AcaBackground)
-            .testTag("screen_cliente_mis_mandados"),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 95.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .testTag("pull_to_refresh_box")
     ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(AcaBackground)
+                .testTag("screen_cliente_mis_mandados"),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 95.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
         // 1. Cabecera principal con botón de crear mandado
         item {
             Row(
@@ -369,6 +378,7 @@ fun ClienteMisMandadosScreen(
             }
         }
     }
+}
 
     // Modal de Detalle Completo de la Orden con Timeline
     selectedOrderForDetail?.let { order ->

@@ -77,9 +77,9 @@ data class MandadoOrder(
         return if (trackingToken.isNotBlank()) {
             trackingToken
         } else {
-            // Fallback determinista para órdenes previas
+            // Fallback seguro que no expone el PIN de seguridad en la URL
             val cleanFolio = folio.replace("[^A-Za-z0-9]".toRegex(), "").lowercase()
-            "tk_${cleanFolio}_${pinSeguridad}"
+            "trk_${cleanFolio}_sec"
         }
     }
 
